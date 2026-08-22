@@ -1,0 +1,14 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Run the verified Home Butler self-check after WSL starts
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=10min
+RandomizedDelaySec=10s
+AccuracySec=1s
+Persistent=true
+Unit=home-butler-startup-self-check.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[network]
+generateResolvConf = false
+
+[boot]
+systemd = true
+
+[interop]
+appendWindowsPath = false

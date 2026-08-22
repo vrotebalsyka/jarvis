@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose MQTT"
+  short_description: "Read-only MQTT reachability diagnosis"
+  default_prompt: "Use $diagnose-mqtt to inspect MQTT availability without publishing or restarting anything."

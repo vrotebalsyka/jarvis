@@ -1,0 +1,14 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Check for profile-bound integration recovery every minute
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=70s
+RandomizedDelaySec=4
+AccuracySec=1s
+Persistent=true
+Unit=home-butler-integration-recovery.service
+
+[Install]
+WantedBy=timers.target

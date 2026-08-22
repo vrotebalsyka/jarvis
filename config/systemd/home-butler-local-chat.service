@@ -1,0 +1,57 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Home Butler protected local-network browser chat
+After=network-online.target home-butler.service
+Wants=network-online.target home-butler.service
+
+[Service]
+Type=simple
+User=homebutler
+Group=homebutler
+WorkingDirectory=/opt/home-butler
+Environment=HOME=/home/homebutler
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=HOME_BUTLER_LOCAL_CHAT_PORT=8780
+Environment=HOME_BUTLER_LOCAL_CHAT_BIND_HOST=0.0.0.0
+Environment=HOME_BUTLER_LOCAL_CHAT_ALLOWED_HOSTS=127.0.0.1:8780,localhost:8780
+Environment=HOME_BUTLER_LOCAL_CHAT_ALLOWED_NETWORKS=127.0.0.0/8,172.16.0.0/12
+Environment=HOME_BUTLER_LAN_CHAT_BACKEND_PORT=8781
+Environment=HOME_BUTLER_LAN_CHAT_ALLOWED_HOSTS=192.168.1.175:8780
+Environment=HOME_BUTLER_INSTRUCTIONS_FILE=/home/homebutler/.config/home-butler/HOME-BUTLER-INSTRUCTIONS.md
+Environment=HOME_BUTLER_MODEL_WORKSPACE=/home/homebutler/.local/share/home-butler/model-workspace
+ExecStart=/usr/bin/python3 /opt/home-butler/scripts/local_chat_gateway.py
+LoadCredential=home-assistant.token:/root/Jarvis/home-butler/secrets/home-assistant.token
+LoadCredential=local-chat-lan.key:/root/Jarvis/home-butler/secrets/local-chat-lan.key
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=150
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/homebutler/.local/share/home-butler/model-workspace
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+IPAddressAllow=172.16.0.0/12
+IPAddressAllow=192.168.1.0/24
+IPAddressAllow=192.168.1.127/32
+TasksMax=48
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

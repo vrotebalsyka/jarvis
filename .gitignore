@@ -1,0 +1,16 @@
+config/home-assistant.env
+hermes/.env
+logs/*
+secrets/*
+state/*
+!logs/.gitkeep
+!state/.gitkeep
+
+# excluded from repo
+hermes-agent/
+runtime-home/
+tmp/
+hermes/bin/
+__pycache__/
+*.pyc
+node_modules/

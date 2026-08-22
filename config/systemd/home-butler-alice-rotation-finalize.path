@@ -1,0 +1,10 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Watch for an authenticated request on the staged Alice Webhook
+
+[Path]
+PathExists=/home/homebutler/.local/state/home-butler/alice/webhook-next-used
+Unit=home-butler-alice-rotation-finalize.service
+
+[Install]
+WantedBy=multi-user.target

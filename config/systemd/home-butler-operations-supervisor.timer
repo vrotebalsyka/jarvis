@@ -1,0 +1,14 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Verify Home Butler operational duties every thirty seconds
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+RandomizedDelaySec=0
+AccuracySec=1s
+Persistent=false
+Unit=home-butler-operations-supervisor.service
+
+[Install]
+WantedBy=timers.target

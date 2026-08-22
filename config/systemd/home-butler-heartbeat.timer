@@ -1,0 +1,14 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Run Home Butler heartbeat every 10 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+RandomizedDelaySec=30
+AccuracySec=1s
+Persistent=true
+Unit=home-butler-heartbeat.service
+
+[Install]
+WantedBy=timers.target

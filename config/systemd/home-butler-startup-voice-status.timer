@@ -1,0 +1,15 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Retry the one-per-boot Home Butler startup voice status until HA is ready
+
+[Timer]
+OnBootSec=180s
+OnActiveSec=180s
+OnUnitActiveSec=1min
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=home-butler-startup-voice-status.service
+
+[Install]
+WantedBy=timers.target

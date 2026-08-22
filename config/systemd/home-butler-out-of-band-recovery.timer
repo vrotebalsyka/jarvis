@@ -1,0 +1,13 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Run independent Home Assistant Container recovery checks
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1min
+RandomizedDelaySec=5
+Persistent=true
+Unit=home-butler-out-of-band-recovery.service
+
+[Install]
+WantedBy=timers.target

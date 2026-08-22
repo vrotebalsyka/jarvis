@@ -1,0 +1,10 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Watch for the first private Alice skill identity
+
+[Path]
+PathExists=/home/homebutler/.local/state/home-butler/alice/claim.json
+Unit=home-butler-alice-finalize.service
+
+[Install]
+WantedBy=multi-user.target

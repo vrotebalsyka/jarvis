@@ -1,0 +1,49 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Home Butler persistent Tailscale Funnel for the private Alice skill
+After=network-online.target tailscaled.service home-butler-alice-skill.service
+Wants=network-online.target tailscaled.service
+Requires=home-butler-alice-skill.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/home-butler
+Environment=HOME=/root
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/home-butler/scripts/alice_tailscale_funnel.py --ensure
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=90
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Python remains resident while the short-lived Go CLI starts its bounded
+# worker set; 16 is one task too small on the current Tailscale release.
+TasksMax=32
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

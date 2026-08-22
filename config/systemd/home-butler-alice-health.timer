@@ -1,0 +1,14 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Check the exact private Alice webhook every minute
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=60s
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=home-butler-alice-health.service
+
+[Install]
+WantedBy=timers.target

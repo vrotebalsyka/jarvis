@@ -1,0 +1,14 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Audit learned Home Assistant telemetry freshness every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+RandomizedDelaySec=10
+AccuracySec=1s
+Persistent=true
+Unit=home-butler-entity-freshness.service
+
+[Install]
+WantedBy=timers.target

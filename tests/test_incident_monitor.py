@@ -207,6 +207,151 @@ class IncidentMonitorTests(unittest.TestCase):
             finally:
                 migrated.close()
 
+    def test_new_outage_after_announced_recovery_is_a_new_device_episode(self) -> None:
+        """A recovered device must be announced again if it later fails again."""
+        with tempfile.TemporaryDirectory() as temporary:
+            store = self._store(temporary)
+            try:
+                with store.connection:
+                    store.connection.execute(
+                        "UPDATE notification_policies SET enabled_epoch=0 WHERE name=?",
+                        (monitor.DEVICE_NOTIFICATION_POLICY,),
+                    )
+                store.replace_entity_device_map([{
+                    "entity_id": "sensor.repeating_outage",
+                    "physical_device_hash": "e" * 64,
+                    "device_id": "4" * 32,
+                    "platform": "tuya",
+                    "config_entry_ids": ["D" * 26],
+                }], 90)
+
+                store.observe(
+                    "sensor.repeating_outage", "entity", "unavailable", 100,
+                    unavailable=True, source="websocket",
+                )
+                store.confirm_due(120, monitor.CONFIRM_AFTER_SECONDS)
+                store.reconcile_device_incidents(120)
+                first = store.device_notification_candidates(120)[0]
+                first_id = int(first["device_incident_id"])
+                store.record_device_notification(
+                    first_id, "confirmed", 120, status="accepted",
+                    speaker_entity_id="media_player.yandex_station_x10x2a000qpm2b",
+                )
+                store.observe(
+                    "sensor.repeating_outage", "entity", "available", 130,
+                    unavailable=False, source="websocket",
+                )
+                store.reconcile_device_incidents(130)
+                store.record_device_notification(
+                    first_id, "resolved", 130, status="accepted",
+                    speaker_entity_id="media_player.yandex_station_x10x2a000qpm2b",
+                )
+
+                # The second failure starts inside the 180-second anti-flap
+                # correlation window.  Once recovery was announced it is still
+                # a distinct owner-visible episode and needs a fresh notice.
+                store.observe(
+                    "sensor.repeating_outage", "entity", "unavailable", 200,
+                    unavailable=True, source="websocket",
+                )
+                store.confirm_due(220, monitor.CONFIRM_AFTER_SECONDS)
+                result = store.reconcile_device_incidents(220)
+                self.assertEqual(result["created"], 1)
+                candidates = store.device_notification_candidates(220)
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0]["phase"], "confirmed")
+                self.assertNotEqual(
+                    int(candidates[0]["device_incident_id"]), first_id
+                )
+                self.assertEqual(
+                    store.connection.execute(
+                        "SELECT COUNT(*) FROM device_incidents"
+                    ).fetchone()[0],
+                    2,
+                )
+            finally:
+                store.close()
+
+    def test_reconcile_repairs_legacy_reopening_after_recovery_notice(self) -> None:
+        """Existing private ledgers are split without losing either episode."""
+        with tempfile.TemporaryDirectory() as temporary:
+            store = self._store(temporary)
+            try:
+                with store.connection:
+                    store.connection.execute(
+                        "UPDATE notification_policies SET enabled_epoch=0 WHERE name=?",
+                        (monitor.DEVICE_NOTIFICATION_POLICY,),
+                    )
+                store.replace_entity_device_map([{
+                    "entity_id": "sensor.legacy_reopening",
+                    "physical_device_hash": "f" * 64,
+                    "device_id": "5" * 32,
+                    "platform": "tuya",
+                    "config_entry_ids": ["E" * 26],
+                }], 90)
+                store.observe(
+                    "sensor.legacy_reopening", "entity", "unavailable", 100,
+                    unavailable=True, source="websocket",
+                )
+                store.confirm_due(120, monitor.CONFIRM_AFTER_SECONDS)
+                store.reconcile_device_incidents(120)
+                device_id = int(store.connection.execute(
+                    "SELECT id FROM device_incidents"
+                ).fetchone()[0])
+                store.record_device_notification(
+                    device_id, "confirmed", 120, status="accepted",
+                    speaker_entity_id="media_player.yandex_station_x10x2a000qpm2b",
+                )
+                store.observe(
+                    "sensor.legacy_reopening", "entity", "available", 130,
+                    unavailable=False, source="websocket",
+                )
+                store.reconcile_device_incidents(130)
+                store.record_device_notification(
+                    device_id, "resolved", 130, status="accepted",
+                    speaker_entity_id="media_player.yandex_station_x10x2a000qpm2b",
+                )
+                store.observe(
+                    "sensor.legacy_reopening", "entity", "unavailable", 200,
+                    unavailable=True, source="websocket",
+                )
+                store.confirm_due(220, monitor.CONFIRM_AFTER_SECONDS)
+                second_incident = int(store.connection.execute(
+                    "SELECT id FROM incidents ORDER BY id DESC LIMIT 1"
+                ).fetchone()[0])
+
+                # Recreate the legacy bad state: the new raw incident was put
+                # back into an already announced-and-resolved device rollup.
+                with store.connection:
+                    store.connection.execute(
+                        "INSERT INTO device_incident_members("
+                        "device_incident_id,entity_incident_id,entity_id) "
+                        "VALUES(?,?,?)",
+                        (device_id, second_incident, "sensor.legacy_reopening"),
+                    )
+                    store.connection.execute(
+                        "UPDATE device_incidents SET status='confirmed',"
+                        "last_observed_epoch=220,resolved_epoch=NULL WHERE id=?",
+                        (device_id,),
+                    )
+
+                result = store.reconcile_device_incidents(220)
+                self.assertEqual(result["created"], 1)
+                rows = store.connection.execute(
+                    "SELECT id,status FROM device_incidents ORDER BY id"
+                ).fetchall()
+                self.assertEqual(
+                    [(int(row["id"]), str(row["status"])) for row in rows],
+                    [(device_id, "resolved"), (device_id + 1, "confirmed")],
+                )
+                candidates = store.device_notification_candidates(220)
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(
+                    int(candidates[0]["device_incident_id"]), device_id + 1
+                )
+            finally:
+                store.close()
+
     def test_recovered_sensor_without_accepted_outage_notice_stays_silent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             store = self._store(temporary)

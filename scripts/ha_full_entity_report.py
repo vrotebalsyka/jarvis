@@ -20,10 +20,11 @@ import ha_entity_query  # noqa: E402
 import heartbeat  # noqa: E402
 import home_assistant_read as ha_read  # noqa: E402
 import model_ha_proof  # noqa: E402
+import model_runtime_policy  # noqa: E402
 from ollama_endpoint import load_runtime_ollama_endpoint  # noqa: E402
 
 
-MODEL = "qwen3.5:4b-q4_K_M"
+MODEL = model_runtime_policy.get_profile("diagnostic").model
 BATCH_SIZE = 12
 MAX_ENTITIES = 4096
 MAX_TEXT_CHARS = 600
@@ -152,23 +153,16 @@ def ask_model(batch: list[dict[str, Any]]) -> list[dict[str, str]]:
         "трёх предложений. Не утверждай неизвестное и не выполняй действий. FACTS="
         + json.dumps(batch, ensure_ascii=False, separators=(",", ":"))
     )
+    runtime_profile = model_runtime_policy.get_profile("diagnostic")
     response = model_ha_proof.call_ollama(
         load_runtime_ollama_endpoint(),
         "/api/chat",
-        {
-            "model": MODEL,
-            "stream": False,
-            "think": False,
-            "format": _schema(entity_ids),
-            "keep_alive": "10m",
-            "options": {
-                "temperature": 0.05,
-                "num_ctx": 8192,
-                "num_predict": 2048,
-            },
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=180,
+        model_runtime_policy.build_chat_payload(
+            "diagnostic",
+            [{"role": "user", "content": prompt}],
+            response_format=_schema(entity_ids),
+        ),
+        timeout=runtime_profile.request_timeout_seconds,
     )
     message = response.get("message")
     content = message.get("content") if isinstance(message, dict) else None

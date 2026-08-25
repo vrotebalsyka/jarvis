@@ -7,10 +7,13 @@ import os
 import sys
 from pathlib import Path
 
+from model_runtime_policy import get_profile
+
 
 RUNTIME_DIR = Path("/opt/home-butler")
 EXPECTED_HOME = "/home/homebutler"
 EXPECTED_HERMES_HOME = "/home/homebutler/.hermes"
+RUNTIME_PROFILE = get_profile("dialogue")
 REQUIRED_MARKERS = (
     "# Home Butler Mission",
     "Единственный допустимый текст health-отчёта",
@@ -40,7 +43,7 @@ def main() -> int:
         context = build_context_files_prompt(
             cwd=str(RUNTIME_DIR),
             skip_soul=False,
-            context_length=64_000,
+            context_length=RUNTIME_PROFILE.context_window,
         )
     except Exception:
         print("RUNTIME_POLICY_FAILED", file=sys.stderr)

@@ -67,6 +67,18 @@ Hermes gateway для фонового сервиса, но личные воп�
   запускается через минуту после старта WSL, затем каждые 10 минут с jitter до
   30 секунд, хранит состояние
   с правами `0600` и подавляет одинаковые уведомления в течение часа.
+- В текущем Phase 66 working tree фиксированные 12:58/13:00 уже заменены одним
+  persistent SQLite scheduler: 13:00 остаётся только начальным значением
+  ежедневного TaskSpec, переносится обычной русской фразой, а systemd выполняет
+  частый лёгкий tick. Supervisor и безопасный Windows wake-export читают одну
+  базу. Эта миграция ещё не развёрнута в `/opt/home-butler`; подробности и
+  доказательства находятся в `reports/PHASE-66-SCHEDULER.md`.
+- В том же staged working tree обычные запросы локального чата и Алисы
+  переведены на natural bounded tool loop. Он ищет physical device, читает
+  только нужные semantic details и управляет через закрытый capability catalog
+  с реальными enum/range, readback и отдельным R3 confirmation. Технические ID
+  модели не раскрываются. Этот этап ещё не установлен в `/opt/home-butler`;
+  migration note: `reports/PHASE-66-NATURAL-TOOL-LOOP.md`.
 - `home-butler-startup-ha-check.timer` один раз после каждого старта WSL
   запускает модельный GET-only check: Ollama должна сама вызвать
   `ha_get_snapshot`, получить точный очищенный HA-факт и доказать отсутствие
@@ -164,6 +176,55 @@ Unit успешен только если в журнале одновремен
 `ha_get_snapshot`, точный HA-факт, `service_calls: 0` и `fully_on_gpu: true`.
 
 ## Проверки разработки
+
+Recovery planner использует декларативный реестр
+`scripts/recovery_playbook_registry.py`. Его универсальный executor остаётся
+staged/dry-run, пока конкретный playbook не прошёл controlled-live
+квалификацию и отдельное разрешение владельца. Успешные offline-тесты сами по
+себе не включают recovery timer. См.
+`reports/PHASE-66-RECOVERY-PLAYBOOKS.md`.
+
+Новые physical devices попадают в приватную read-only onboarding queue.
+Модель видит безопасный `ha_get_onboarding_queue`, задаёт только отсутствующие
+вопросы и готовит proposal; ни один HA config plan не выполняется без exact
+owner approval и отдельной live qualification. См.
+`reports/PHASE-66-DEVICE-ONBOARDING.md`.
+
+Простые изменения поведения задаются обычной фразой и сохраняются только через
+закрытые `behavior_get` / `behavior_set` / `behavior_reset`: например,
+«Не сообщай о Wi-Fi-сбоях короче минуты». Настройки структурированы в Memory
+Store и не могут включить shell, произвольный HA service call, отключить
+verification/cooldown или изменить R3 policy. Свободный текст
+`HOME-BUTLER-INSTRUCTIONS.md` остаётся справочным и не добавляется в system
+prompt.
+
+Для улучшений кода production-модель может создать только структурированный
+`ChangeProposal` через `change_proposal_create`. Свободная запись в
+`proposals/settings` запрещена; patch, тесты, точное approval, deployment,
+health verification и rollback доступны только отдельному вручную запускаемому
+`maintenance_worker.py`. Сам proposal или approval production не меняют. См.
+`reports/PHASE-66-SAFE-MAINTENANCE.md`.
+
+Каждый обработанный turn Alice/local chat после source deployment получает
+secret-safe trace в общей Memory Store: route/profile/model, token counts,
+context/memory IDs, tool latency, policy/action/verification и итог. Текст
+запросов, tool arguments/results, IP/MAC и credentials не журналируются. См.
+`reports/PHASE-66-OBSERVABILITY.md`.
+
+Если локальная модель не успевает до deadline Алисы, gateway создаёт
+сохраняемый `ActiveGoal` и возвращает короткий ID. Результат добавляется к
+следующему обращению и доступен по фразе `статус задачи <ID>`. После restart
+возобновляются только разговорные/read-only задачи; команда устройству никогда
+не переигрывается. См. `reports/PHASE-66-DEFERRED-ALICE-TASKS.md`.
+
+Опциональный transport Home Assistant Assist исследован, но не установлен:
+он должен подключаться к тому же `owner_chat`/Memory Store/policy engine, а не
+создавать второй мозг. Vision остаётся feature-disabled. См.
+`reports/PHASE-66-OPTIONAL-TRANSPORTS.md`.
+
+Итоговая source-квалификация и честно оставленные live-границы:
+`reports/PHASE-66-RESULT.md`; матрица обязательных тестов A–Z:
+`reports/PHASE-66-ACCEPTANCE.md`.
 
 ```bash
 cd /root/Jarvis/home-butler

@@ -1,3 +1,4 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
 Description=Home Butler complete read-only model report for every HA entity
 After=network-online.target home-butler-inventory.service

@@ -20,7 +20,7 @@ LoadCredential=alice-owner-ids:/root/Jarvis/home-butler/secrets/alice-owner-ids
 RuntimeDirectory=home-butler-alice-health
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-TimeoutStartSec=300
+TimeoutStartSec=55
 UMask=0077
 NoNewPrivileges=yes
 CapabilityBoundingSet=
@@ -45,4 +45,3 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 TasksMax=32
 StandardOutput=journal
 StandardError=journal
-

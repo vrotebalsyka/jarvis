@@ -262,6 +262,7 @@ class HttpContractTests(unittest.TestCase):
             "/api/services/light/turn_on",
             "/api/config",
             "/api/states/switch.light",
+            "/api/history/period/2026-08-24T00%3A00%3A00%2B00%3A00",
             "http://attacker.invalid/api/",
         ):
             with self.subTest(path=path), self.assertRaises(adapter.AdapterError):
@@ -284,6 +285,78 @@ class HttpContractTests(unittest.TestCase):
             self.assertEqual(caught.exception.status, expected)
             self.assertNotIn(TEST_TOKEN, str(caught.exception))
             self.assertNotIn("SECRET_SENTINEL", str(caught.exception))
+
+    def test_recent_history_uses_one_closed_get_and_discards_attributes(self) -> None:
+        now = datetime(2026, 8, 24, 8, 30, tzinfo=timezone.utc)
+        raw = [[
+            {
+                "entity_id": "sensor.temperature",
+                "state": "20.5",
+                "last_changed": "2026-08-24T07:00:00+00:00",
+                "attributes": {"token": "SECRET_SENTINEL"},
+            },
+            {
+                "state": "21.0",
+                "last_changed": "2026-08-24T08:00:00+00:00",
+                "attributes": {"url": "https://attacker.invalid"},
+            },
+        ]]
+        factory, connection = self.factory_for(FakeResponse(200, raw))
+        result = adapter.request_recent_history(
+            test_config(read_all_entities=True),
+            "sensor.temperature",
+            hours=2,
+            limit=1,
+            connection_factory=factory,
+            now=now,
+        )
+        self.assertEqual(result, [{
+            "state_kind": "number",
+            "state_value": 21.0,
+            "source_last_updated_at": "2026-08-24T08:00:00+00:00",
+        }])
+        method, path, headers = connection.requests[0]
+        self.assertEqual(method, "GET")
+        self.assertTrue(path.startswith(
+            "/api/history/period/2026-08-24T06%3A30%3A00%2B00%3A00?"
+        ))
+        self.assertIn("filter_entity_id=sensor.temperature", path)
+        self.assertIn("minimal_response", path)
+        self.assertIn("no_attributes", path)
+        self.assertIn("significant_changes_only", path)
+        self.assertEqual(headers["Authorization"], f"Bearer {TEST_TOKEN}")
+        serialized = json.dumps(result)
+        self.assertNotIn("SECRET_SENTINEL", serialized)
+        self.assertNotIn("attacker", serialized)
+
+    def test_recent_history_rejects_scope_parameters_and_foreign_entity_data(self) -> None:
+        factory = mock.Mock()
+        with self.assertRaises(adapter.AdapterError):
+            adapter.request_recent_history(
+                test_config(entities=("sensor.other",)),
+                "sensor.temperature",
+                connection_factory=factory,
+            )
+        with self.assertRaises(adapter.AdapterError):
+            adapter.request_recent_history(
+                test_config(read_all_entities=True),
+                "sensor.temperature",
+                hours=25,
+                connection_factory=factory,
+            )
+        factory.assert_not_called()
+
+        response_factory, _connection = self.factory_for(FakeResponse(200, [[{
+            "entity_id": "sensor.foreign",
+            "state": "on",
+            "last_changed": "2026-08-24T08:00:00+00:00",
+        }]]))
+        with self.assertRaises(adapter.AdapterError):
+            adapter.request_recent_history(
+                test_config(read_all_entities=True),
+                "sensor.temperature",
+                connection_factory=response_factory,
+            )
 
 
 class DataBoundaryTests(unittest.TestCase):

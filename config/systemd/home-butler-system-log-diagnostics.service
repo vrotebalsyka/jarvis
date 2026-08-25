@@ -14,7 +14,7 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=HOME_BUTLER_INCIDENT_STATE_DIR=/home/homebutler/.local/state/home-butler/incidents
 ExecStart=/usr/bin/python3 /opt/home-butler/scripts/system_log_diagnostics.py
 LoadCredential=home-assistant.token:/root/Jarvis/home-butler/secrets/home-assistant.token
-TimeoutStartSec=30
+TimeoutStartSec=300
 UMask=0077
 NoNewPrivileges=yes
 CapabilityBoundingSet=
@@ -34,6 +34,8 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictAddressFamilies=AF_UNIX AF_INET
 IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+IPAddressAllow=172.16.0.0/12
 IPAddressAllow=192.168.1.127/32
 TasksMax=32
 StandardOutput=journal

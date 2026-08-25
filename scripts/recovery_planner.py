@@ -18,10 +18,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import incident_monitor  # noqa: E402
 import model_ha_proof  # noqa: E402
+import model_runtime_policy  # noqa: E402
+import recovery_playbook_registry as playbook_registry  # noqa: E402
 from ollama_endpoint import OllamaEndpoint, load_runtime_ollama_endpoint  # noqa: E402
 
 
-MODEL = "home-butler"
+MODEL = model_runtime_policy.get_profile("structured").model
 RUNTIME_FACT_VALUES = {
     "yandex_cloud": {"unknown", "reachable", "unreachable"},
     "integration": {"unknown", "healthy", "unhealthy"},
@@ -38,17 +40,7 @@ RUNTIME_FACT_VALUES = {
     "entry_match": {"unknown", "single", "ambiguous"},
     "device_activity": {"unknown", "idle", "active"},
 }
-CANDIDATE_IDS = {
-    "observe_and_notify",
-    "wait_yandex_backoff",
-    "retry_original_intent_once",
-    "reload_yandex_entry_once",
-    "repair_helper_state",
-    "close_obsolete_intent",
-    "close_verified_state",
-    "reload_integration_entry_once",
-    "reload_local_integration_once",
-}
+CANDIDATE_IDS = frozenset(playbook_registry.BY_ID)
 
 
 class PlannerError(RuntimeError):
@@ -106,149 +98,10 @@ def build_facts(
 
 def build_candidates(facts: list[dict[str, str]]) -> list[dict[str, object]]:
     fact_ids = {item["id"] for item in facts}
-    candidates: list[dict[str, object]] = [{
-        "id": "observe_and_notify",
-        "risk": "none",
-        "required_fact_ids": ["incident:open"],
-    }]
-    if (
-        "cause:yandex_cloud_unreachable" in fact_ids
-        and fact_ids & {"yandex_cloud:unreachable", "yandex_cloud:unknown"}
-    ):
-        candidates.append({
-            "id": "wait_yandex_backoff",
-            "risk": "none",
-            "required_fact_ids": ["cause:yandex_cloud_unreachable"],
-        })
-    safe_target = bool(
-        fact_ids & {"safety:light", "safety:ordinary_relay"}
-        and "target:known" in fact_ids
-    )
-    exact_action = bool(
-        fact_ids & {
-            "action:light.turn_on", "action:light.turn_off",
-            "action:switch.turn_on", "action:switch.turn_off",
-        }
-    )
-    if (
-        safe_target
-        and exact_action
-        and "yandex_cloud:reachable" in fact_ids
-        and "intent:current" in fact_ids
-        and "target_state:mismatched" in fact_ids
-        and "retry_budget:available" in fact_ids
-    ):
-        candidates.append({
-            "id": "retry_original_intent_once",
-            "risk": "low",
-            "required_fact_ids": sorted([
-                "yandex_cloud:reachable", "intent:current",
-                "target_state:mismatched", "target:known",
-                "retry_budget:available",
-                next(value for value in fact_ids if value.startswith("safety:")),
-                next(value for value in fact_ids if value.startswith("action:")),
-            ]),
-        })
-    if (
-        "yandex_cloud:reachable" in fact_ids
-        and "integration:unhealthy" in fact_ids
-        and "config_entry:known" in fact_ids
-    ):
-        candidates.append({
-            "id": "reload_yandex_entry_once",
-            "risk": "low",
-            "required_fact_ids": [
-                "yandex_cloud:reachable", "integration:unhealthy",
-                "config_entry:known",
-            ],
-        })
-    if (
-        "helper_state:desynchronized" in fact_ids
-        and "target:known" in fact_ids
-        and safe_target
-    ):
-        candidates.append({
-            "id": "repair_helper_state",
-            "risk": "low",
-            "required_fact_ids": [
-                "helper_state:desynchronized", "target:known",
-            ],
-        })
-    if (
-        "intent:obsolete" in fact_ids
-        and "target_state:mismatched" in fact_ids
-        and "helper_state:consistent" in fact_ids
-    ):
-        candidates.append({
-            "id": "close_obsolete_intent",
-            "risk": "none",
-            "required_fact_ids": [
-                "intent:obsolete", "target_state:mismatched",
-                "helper_state:consistent",
-            ],
-        })
-    if (
-        "intent:current" in fact_ids
-        and "target_state:matched" in fact_ids
-    ):
-        candidates.append({
-            "id": "close_verified_state",
-            "risk": "none",
-            "required_fact_ids": [
-                "intent:current", "target_state:matched",
-            ],
-        })
-    integration_open = "cause:integration_not_loaded" in fact_ids
-    reload_ready = bool(
-        integration_open
-        and "entry_match:single" in fact_ids
-        and "retry_budget:available" in fact_ids
-    )
-    entry_profile_ready = bool(
-        "integration_profile:entry_reload" in fact_ids
-        or (
-            "integration_profile:idle_entry_reload" in fact_ids
-            and "device_activity:idle" in fact_ids
-        )
-        or (
-            "integration_profile:cloud_backoff_entry_reload" in fact_ids
-            and "yandex_cloud:reachable" in fact_ids
-        )
-    )
-    if reload_ready and entry_profile_ready:
-        required = [
-            "cause:integration_not_loaded", "entry_match:single",
-            "retry_budget:available",
-            next(
-                value for value in fact_ids
-                if value.startswith("integration_profile:")
-            ),
-        ]
-        if "integration_profile:idle_entry_reload" in fact_ids:
-            required.append("device_activity:idle")
-        if "integration_profile:cloud_backoff_entry_reload" in fact_ids:
-            required.append("yandex_cloud:reachable")
-        candidates.append({
-            "id": "reload_integration_entry_once",
-            "risk": "low",
-            "required_fact_ids": sorted(required),
-        })
-    if (
-        reload_ready
-        and "integration_profile:local_rebind_reload" in fact_ids
-    ):
-        candidates.append({
-            "id": "reload_local_integration_once",
-            "risk": "low",
-            "required_fact_ids": sorted([
-                "cause:integration_not_loaded", "entry_match:single",
-                "retry_budget:available",
-                "integration_profile:local_rebind_reload",
-            ]),
-        })
-    return candidates
-
-
+    # The declarative registry is authoritative. The legacy predicates below
+    # remain temporarily as a migration oracle and are proven equivalent by
+    # tests before their final removal.
+    return playbook_registry.matching_candidates(fact_ids)
 def _parse_choice(document: dict[str, Any]) -> dict[str, object]:
     message = document.get("message")
     content = message.get("content") if isinstance(message, dict) else None
@@ -280,7 +133,7 @@ def choose(
     candidates: list[dict[str, object]],
     *,
     endpoint_loader: Callable[[], OllamaEndpoint] = load_runtime_ollama_endpoint,
-    ollama_call: Callable[[OllamaEndpoint, str, dict[str, Any]], dict[str, Any]] = model_ha_proof.call_ollama,
+    ollama_call: Callable[..., dict[str, Any]] = model_ha_proof.call_ollama,
 ) -> dict[str, object]:
     if not candidates:
         raise PlannerError("recovery candidates are unavailable")
@@ -294,11 +147,7 @@ def choose(
     ]
     prompt_candidates = specific_candidates or [fallback]
     offered = {str(item["id"]): item for item in prompt_candidates}
-    payload = {
-        "model": MODEL,
-        "stream": False,
-        "think": False,
-        "format": {
+    response_format = {
             "type": "object",
             "properties": {
                 "candidate_id": {"type": "string", "enum": sorted(offered)},
@@ -309,9 +158,11 @@ def choose(
             },
             "required": ["candidate_id", "fact_ids"],
             "additionalProperties": False,
-        },
-        "options": {"temperature": 0, "num_ctx": 2_048, "num_predict": 128},
-        "messages": [
+        }
+    runtime_profile = model_runtime_policy.get_profile("structured")
+    payload = model_runtime_policy.build_chat_payload(
+        "structured",
+        [
             {
                 "role": "system",
                 "content": (
@@ -331,9 +182,15 @@ def choose(
                 ),
             },
         ],
-    }
+        response_format=response_format,
+    )
     try:
-        choice = _parse_choice(ollama_call(endpoint_loader(), "/api/chat", payload))
+        choice = _parse_choice(ollama_call(
+            endpoint_loader(),
+            "/api/chat",
+            payload,
+            timeout=runtime_profile.request_timeout_seconds,
+        ))
         candidate = offered.get(str(choice["candidate_id"]))
         selected_facts = set(choice["fact_ids"])
         if (

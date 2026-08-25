@@ -30,11 +30,20 @@ class WindowsHomeButlerStartupTests(unittest.TestCase):
         self.assertNotIn("LogonType ServiceAccount", INSTALLER)
 
     def test_runtime_is_restarted_before_report_and_can_wake_windows(self) -> None:
-        self.assertIn("$reportWakeTrigger = New-ScheduledTaskTrigger", INSTALLER)
-        self.assertIn("-Daily", INSTALLER)
-        self.assertIn("AddHours(12).AddMinutes(58)", INSTALLER)
+        self.assertIn("persistent_scheduler.py", INSTALLER)
+        self.assertIn("--wake-json", INSTALLER)
+        self.assertIn("wake_epoch", INSTALLER)
+        self.assertIn("windows-wake-sync.cs", INSTALLER)
+        self.assertIn("HomeButlerWakeSync.exe", INSTALLER)
+        self.assertIn("Home Butler Scheduler Wake", INSTALLER)
+        self.assertIn("Home Butler Scheduler Wake Sync", INSTALLER)
+        self.assertIn("/opt/home-butler/scripts/windows_wake_sync.py", INSTALLER)
+        self.assertIn("-RepetitionInterval (New-TimeSpan -Minutes 5)", INSTALLER)
+        self.assertIn("failed readback verification", INSTALLER)
+        self.assertNotIn("AddHours(12)", INSTALLER)
         self.assertIn("-WakeToRun", INSTALLER)
-        self.assertIn("-Trigger @($logonTrigger, $reportWakeTrigger)", INSTALLER)
+        self.assertIn("-Trigger $runtimeTriggers", INSTALLER)
+        self.assertNotIn("New-ScheduledTaskTrigger -Once", INSTALLER)
 
     def test_restart_policy_is_bounded_and_startup_is_headless(self) -> None:
         self.assertIn("-RestartCount 5", INSTALLER)
@@ -48,6 +57,10 @@ class WindowsHomeButlerStartupTests(unittest.TestCase):
         self.assertNotIn("powershell.exe", INSTALLER.casefold())
         self.assertNotIn("0.0.0.0", INSTALLER)
         self.assertNotIn("HA_TOKEN", INSTALLER)
+        self.assertIn("Register-BoundedHomeButlerTask", INSTALLER)
+        self.assertIn("Stop-ScheduledTask -TaskName $Name -ErrorAction Stop", INSTALLER)
+        self.assertIn("Register-ScheduledTask `", INSTALLER)
+        self.assertIn("-ErrorAction Stop | Out-Null", INSTALLER)
 
     def test_removes_legacy_powershell_watchdog_task(self) -> None:
         self.assertIn("Home Butler Watchdog", INSTALLER)

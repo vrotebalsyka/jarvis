@@ -17,6 +17,8 @@ Environment=HOME_BUTLER_ALICE_PORT=8765
 Environment=HOME_BUTLER_ALICE_CLAIM_FILE=/home/homebutler/.local/state/home-butler/alice/claim.json
 Environment=HOME_BUTLER_ALICE_ROTATION_MARKER=/home/homebutler/.local/state/home-butler/alice/webhook-next-used
 Environment=HOME_BUTLER_INSTRUCTIONS_FILE=/home/homebutler/.config/home-butler/HOME-BUTLER-INSTRUCTIONS.md
+Environment=HOME_BUTLER_MODEL_WORKSPACE=/home/homebutler/.local/share/home-butler/model-workspace
+Environment=HOME_BUTLER_MEMORY_DB=/home/homebutler/.local/state/home-butler/memory/memory.db
 ExecStart=/usr/bin/python3 /opt/home-butler/scripts/alice_skill_gateway.py
 LoadCredential=home-assistant.token:/root/Jarvis/home-butler/secrets/home-assistant.token
 LoadCredential=alice-skill-secret:/root/Jarvis/home-butler/secrets/alice-skill-secret
@@ -35,7 +37,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/homebutler/.local/state/home-butler/alice
+ReadWritePaths=/home/homebutler/.local/share/home-butler/model-workspace /home/homebutler/.local/state/home-butler/alice /home/homebutler/.local/state/home-butler/memory /home/homebutler/.local/state/home-butler/scheduler
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

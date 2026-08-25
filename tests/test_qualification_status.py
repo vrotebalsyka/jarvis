@@ -126,6 +126,49 @@ class QualificationStatusTests(unittest.TestCase):
             with self.assertRaises(status.QualificationError):
                 status.read_reboot_count(path)
 
+    def test_notification_timestamp_before_confirmation_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary) / "state"
+            state.mkdir(mode=0o700)
+            database = state / monitor.DATABASE_NAME
+            store = monitor.IncidentStore(database)
+            try:
+                with store.connection:
+                    store.connection.execute(
+                        "UPDATE notification_policies SET enabled_epoch=0 WHERE name=?",
+                        (monitor.DEVICE_NOTIFICATION_POLICY,),
+                    )
+                store.replace_entity_device_map([{
+                    "entity_id": "sensor.uvlazhnitel_clock_error",
+                    "physical_device_hash": "b" * 64,
+                    "device_id": "2" * 32,
+                    "platform": "tuya",
+                    "config_entry_ids": ["B" * 26],
+                }], 90)
+                store.observe(
+                    "sensor.uvlazhnitel_clock_error", "entity", "unavailable", 100,
+                    unavailable=True, source="websocket",
+                )
+                store.confirm_due(120, monitor.CONFIRM_AFTER_SECONDS)
+                store.reconcile_device_incidents(120)
+                device_id = int(store.connection.execute(
+                    "SELECT id FROM device_incidents"
+                ).fetchone()[0])
+                store.record_device_notification(
+                    device_id, "confirmed", 50, status="accepted",
+                    speaker_entity_id="media_player.yandex_station_x10x2a000qpm2b",
+                )
+            finally:
+                store.close()
+
+            humidifier = status._device_proofs(
+                database, expected_uid=os.geteuid()
+            )["humidifier"]
+            self.assertEqual(humidifier["state"], "waiting_alert")
+            self.assertFalse(humidifier["one_outage_notice"])
+            self.assertIsNone(humidifier["alert_seconds"])
+            self.assertFalse(humidifier["latency_ok"])
+
     def test_dialogue_proof_is_private_and_bound_to_current_boot(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary) / "dialogue"

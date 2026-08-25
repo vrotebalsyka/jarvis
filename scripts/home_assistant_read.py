@@ -14,12 +14,15 @@ import ssl
 import stat
 import sys
 import threading
+import time
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
+
+import turn_observability
 
 
 sys.dont_write_bytecode = True
@@ -441,6 +444,23 @@ def request_json(
 ) -> Any:
     if path not in {"/api/", "/api/states"}:
         raise AdapterError("api_unavailable")
+    return _request_json_get(
+        config,
+        path,
+        connection_factory=connection_factory,
+        deadline_seconds=deadline_seconds,
+    )
+
+
+def _request_json_get(
+    config: AdapterConfig,
+    path: str,
+    *,
+    connection_factory: Callable[[AdapterConfig], http.client.HTTPConnection],
+    deadline_seconds: float,
+) -> Any:
+    """Perform one bounded GET after the caller has validated the exact path."""
+
     try:
         connection = connection_factory(config)
     except (OSError, http.client.HTTPException) as error:
@@ -492,6 +512,78 @@ def request_json(
     finally:
         timer.cancel()
         _close_connection(connection, socket_holder[0])
+
+
+def sanitize_history_response(
+    raw: Any,
+    entity_id: str,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Reduce HA history to bounded typed state evidence without attributes."""
+
+    _validate_entity_id(entity_id)
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 64:
+        raise AdapterError("api_unavailable")
+    if not isinstance(raw, list) or len(raw) > 1:
+        raise AdapterError("api_unavailable")
+    if not raw:
+        return []
+    series = raw[0]
+    if not isinstance(series, list) or len(series) > MAX_JSON_NODES:
+        raise AdapterError("api_unavailable")
+    observations: list[dict[str, Any]] = []
+    for item in series:
+        if not isinstance(item, dict):
+            raise AdapterError("api_unavailable")
+        reported_entity = item.get("entity_id")
+        if reported_entity is not None and reported_entity != entity_id:
+            raise AdapterError("api_unavailable")
+        timestamp = _parse_timestamp(item.get("last_changed") or item.get("last_updated"))
+        state_kind, state_value = _normalize_state(entity_id, item.get("state"))
+        observations.append({
+            "state_kind": state_kind,
+            "state_value": state_value,
+            "source_last_updated_at": timestamp.isoformat(timespec="seconds"),
+        })
+    return observations[-limit:]
+
+
+def request_recent_history(
+    config: AdapterConfig,
+    entity_id: str,
+    *,
+    hours: int = 6,
+    limit: int = 32,
+    connection_factory: Callable[[AdapterConfig], http.client.HTTPConnection] = _default_connection,
+    deadline_seconds: float = REQUEST_DEADLINE_SECONDS,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Read one entity's recent history through a closed, GET-only contract."""
+
+    normalized_entity = _validate_entity_id(entity_id)
+    if not config.read_all_entities and normalized_entity not in config.allowed_entities:
+        raise AdapterError("api_unavailable")
+    if not isinstance(hours, int) or isinstance(hours, bool) or not 1 <= hours <= 24:
+        raise AdapterError("api_unavailable")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 64:
+        raise AdapterError("api_unavailable")
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    start = current - timedelta(hours=hours)
+    encoded_start = quote(start.isoformat(timespec="seconds"), safe="")
+    encoded_entity = quote(normalized_entity, safe="")
+    path = (
+        f"/api/history/period/{encoded_start}"
+        f"?filter_entity_id={encoded_entity}"
+        "&minimal_response&no_attributes&significant_changes_only"
+    )
+    raw = _request_json_get(
+        config,
+        path,
+        connection_factory=connection_factory,
+        deadline_seconds=deadline_seconds,
+    )
+    return sanitize_history_response(raw, normalized_entity, limit=limit)
 
 
 def _parse_timestamp(value: Any) -> datetime:
@@ -799,14 +891,21 @@ def execute(command: str, entity_id: str | None = None) -> dict[str, Any]:
 
 
 def execute_safely(command: str, entity_id: str | None = None) -> tuple[dict[str, Any], int]:
+    started = time.monotonic()
     try:
-        return execute(command, entity_id), 0
+        result, exit_code = execute(command, entity_id), 0
     except AdapterError as error:
         result = _base_result(error.configured, error.status)
         exit_code = 0 if command in {"probe", "snapshot", "health"} else 3
-        return result, exit_code
     except Exception:
-        return _base_result(True, "api_unavailable"), 3
+        result, exit_code = _base_result(True, "api_unavailable"), 3
+    turn_observability.record_tool_call(
+        f"ha_read.{command}",
+        latency_ms=round((time.monotonic() - started) * 1000),
+        policy_result="allowed" if exit_code == 0 else "rejected",
+        result_status=result.get("status", "unknown"),
+    )
+    return result, exit_code
 
 
 def run(argv: Sequence[str] | None = None) -> int:

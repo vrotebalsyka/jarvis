@@ -47,6 +47,11 @@ class FakeSocket:
                         "config_entries": [ENTRY_ID],
                         "identifiers": [["localtuya", "local_SECRET_DEVICE_ID"]],
                         "connections": [["mac", "d8:d6:68:c8:27:84"]],
+                        "name": "Кухонное реле",
+                        "manufacturer": "Example Devices",
+                        "model": "Relay 2",
+                        "sw_version": "1.2.3",
+                        "area_id": "kitchen",
                     },
                 ],
             },
@@ -80,6 +85,31 @@ class FakeSocket:
                     ],
                 },
             },
+            {
+                "id": 14, "type": "result", "success": True,
+                "result": [
+                    {"area_id": "kitchen", "name": "Кухня", "aliases": ["кухонная зона"]}
+                ],
+            },
+            {
+                "id": 15, "type": "result", "success": True,
+                "result": [
+                    {
+                        "entity_id": "switch.kukhnia",
+                        "aliases": ["главное реле"],
+                        "original_name": "Power",
+                        "translation_key": "power",
+                        "area_id": None,
+                    },
+                    {
+                        "entity_id": "sensor.temperature",
+                        "aliases": [],
+                        "original_name": "Temperature",
+                        "translation_key": "temperature",
+                        "area_id": None,
+                    },
+                ],
+            },
         ]
 
     def recv(self) -> str:
@@ -93,6 +123,69 @@ class FakeSocket:
 
 
 class InventoryTests(unittest.TestCase):
+    def test_official_mcp_probe_is_bounded_get_only_and_body_blind(self) -> None:
+        class Response:
+            def __init__(self, status: int) -> None:
+                self.status = status
+                self.read_amounts: list[int] = []
+
+            def read(self, amount: int) -> bytes:
+                self.read_amounts.append(amount)
+                return b"SECRET_SENTINEL"[:amount]
+
+        class Connection:
+            def __init__(self, status: int) -> None:
+                self.response = Response(status)
+                self.requests: list[tuple[str, str, dict[str, str]]] = []
+                self.closed = False
+
+            def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+                self.requests.append((method, path, headers))
+
+            def getresponse(self) -> Response:
+                return self.response
+
+            def close(self) -> None:
+                self.closed = True
+
+        config = ha_read.AdapterConfig(
+            "http", "192.168.1.127", 8123, TOKEN, (), True
+        )
+        for status, expected in ((404, "unavailable"), (405, "available"), (503, "not_verified")):
+            connection = Connection(status)
+            with self.subTest(status=status):
+                result = inventory._probe_official_mcp(
+                    config, connection_factory=lambda _config, value=connection: value
+                )
+                self.assertEqual(result, expected)
+                method, path, headers = connection.requests[0]
+                self.assertEqual((method, path), ("GET", "/api/mcp"))
+                self.assertEqual(headers["Authorization"], f"Bearer {TOKEN}")
+                self.assertEqual(connection.response.read_amounts, [1_025])
+                self.assertTrue(connection.closed)
+
+    def test_schema_two_inventory_migrates_without_inventing_semantic_facts(self) -> None:
+        migrated = inventory.migrate_inventory_document({
+            "schema_version": 2,
+            "entities": [{
+                "entity_id": "sensor.unknown_metric",
+                "platform": "unknown_vendor",
+                "state_kind": "number",
+                "state_value": 12.5,
+                "friendly_name": "Unknown metric",
+                "config_entry_ids": [],
+            }],
+            "config_entries": [],
+            "physical_devices": [],
+        })
+        self.assertEqual(migrated["schema_version"], 3)
+        self.assertEqual(migrated["migrated_from_schema"], 2)
+        entity = migrated["entities"][0]
+        self.assertEqual(entity["semantic_role"], "measurement")
+        self.assertEqual(entity["availability"], "available")
+        self.assertEqual(entity["semantic_attributes"], {})
+        self.assertIsNone(entity["manufacturer"])
+
     def test_inventory_maps_platform_device_entry_and_sanitizes_lan(self) -> None:
         config = ha_read.AdapterConfig("http", "192.168.1.127", 8123, TOKEN, (), True)
         snapshot = {
@@ -105,7 +198,11 @@ class InventoryTests(unittest.TestCase):
             {
                 "entity_id": "switch.kukhnia",
                 "state": "unavailable",
-                "attributes": {"friendly_name": "Реле кухни"},
+                "attributes": {
+                    "friendly_name": "Реле кухни",
+                    "supported_features": 0,
+                    "local_key": "MUST_NOT_SURVIVE",
+                },
             },
             {
                 "entity_id": "sensor.network_scanner",
@@ -151,13 +248,23 @@ class InventoryTests(unittest.TestCase):
                 }
             },
             core_config_reader=lambda _config: {"version": "2026.5.2"},
+            official_mcp_probe=lambda _config: "available",
         )
         local = next(item for item in result["entities"] if item["entity_id"] == "switch.kukhnia")
+        self.assertEqual(result["schema_version"], 3)
         self.assertEqual(local["platform"], "localtuya")
         self.assertEqual(local["device_id"], DEVICE_ID)
         self.assertRegex(local["physical_device_hash"], r"^[a-f0-9]{64}$")
         self.assertEqual(local["config_entry_ids"], [ENTRY_ID])
         self.assertEqual(local["state_kind"], "unavailable")
+        self.assertEqual(local["availability"], "unavailable")
+        self.assertEqual(local["area_name"], "Кухня")
+        self.assertEqual(local["area_aliases"], ["кухонная зона"])
+        self.assertEqual(local["entity_aliases"], ["главное реле"])
+        self.assertEqual(local["translation_key"], "power")
+        self.assertEqual(local["semantic_role"], "control")
+        self.assertEqual(local["capability"], "control")
+        self.assertEqual(local["semantic_attributes"], {"supported_features": 0})
         self.assertEqual(
             result["network_devices"],
             [{"ip": "192.168.1.156", "mac": "D8:D6:68:C8:27:84", "vendor_kind": "tuya"}],
@@ -187,6 +294,23 @@ class InventoryTests(unittest.TestCase):
             result["backup_readiness"]["status"], "recent_complete_backup"
         )
         self.assertFalse(result["backup_readiness"]["restore_tested"])
+        self.assertEqual(result["official_home_assistant"]["api_mcp"], "available")
+        self.assertEqual(
+            result["official_home_assistant"]["alias_matching"],
+            "registry_aliases_available",
+        )
+        self.assertEqual(
+            result["official_home_assistant"]["get_live_context"],
+            "not_verified",
+        )
+        self.assertEqual(
+            result["official_home_assistant"]["exposed_entity_policy"],
+            "not_imported",
+        )
+        self.assertEqual(
+            result["official_home_assistant"]["inventory_role"],
+            "stable_identity_source_of_truth",
+        )
         binding = result["identity_bindings"][0]
         self.assertEqual(binding["device_id"], DEVICE_ID)
         self.assertEqual(binding["configured_ip"], "192.168.1.156")
@@ -199,7 +323,10 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(generic["observed_ip"], "192.168.1.156")
         self.assertEqual(generic["status"], "stable")
         physical = result["physical_devices"][0]
-        self.assertEqual(physical["display_name"], "Реле кухни")
+        self.assertEqual(physical["display_name"], "Кухонное реле")
+        self.assertEqual(physical["area_names"], ["Кухня"])
+        self.assertEqual(physical["manufacturers"], ["Example Devices"])
+        self.assertEqual(physical["models"], ["Relay 2"])
         self.assertEqual(physical["network_status"], "stable")
         self.assertEqual(physical["safety_class"], "ordinary_relay")
         profiles = {
@@ -218,6 +345,7 @@ class InventoryTests(unittest.TestCase):
         self.assertNotIn("IGNORE POLICY", serialized)
         self.assertNotIn(TOKEN, serialized)
         self.assertNotIn("SECRET_KEY", serialized)
+        self.assertNotIn("MUST_NOT_SURVIVE", serialized)
         self.assertNotIn("PRIVATE_BACKUP_ID", serialized)
         self.assertNotIn("PRIVATE BACKUP NAME", serialized)
 

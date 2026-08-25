@@ -17,7 +17,13 @@ HEARTBEAT = (
 HA_PROOF = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-ha-proof.service"
 ).read_text()
+DIALOGUE_QUALIFICATION = (
+    PROJECT_DIR / "config" / "systemd" / "home-butler-dialogue-qualification.service"
+).read_text()
 TIMER = (PROJECT_DIR / "config" / "systemd" / "home-butler-heartbeat.timer").read_text()
+STARTUP_SELF_CHECK_TIMER = (
+    PROJECT_DIR / "config" / "systemd" / "home-butler-startup-self-check.timer"
+).read_text()
 STARTUP_HA = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-startup-ha-check.service"
 ).read_text()
@@ -56,6 +62,12 @@ INVENTORY = (
 ).read_text()
 INVENTORY_TIMER = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-inventory.timer"
+).read_text()
+DEVICE_ONBOARDING = (
+    PROJECT_DIR / "config" / "systemd" / "home-butler-device-onboarding.service"
+).read_text()
+DEVICE_ONBOARDING_TIMER = (
+    PROJECT_DIR / "config" / "systemd" / "home-butler-device-onboarding.timer"
 ).read_text()
 RECOVERY = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-recovery.service"
@@ -110,6 +122,9 @@ VOICE_INTENT = (
 ).read_text()
 ALICE_SKILL = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-alice-skill.service"
+).read_text()
+LOCAL_CHAT = (
+    PROJECT_DIR / "config" / "systemd" / "home-butler-local-chat.service"
 ).read_text()
 ALICE_TUNNEL = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-alice-tunnel.service"
@@ -196,7 +211,7 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("IPAddressAllow=192.168.1.127/32", RECOVERY)
         self.assertNotIn("IPAddressAllow=172.16.0.0/12", AUTOMATION_DIAGNOSTICS)
         self.assertIn("IPAddressAllow=192.168.1.127/32", AUTOMATION_DIAGNOSTICS)
-        self.assertNotIn("IPAddressAllow=172.16.0.0/12", SYSTEM_LOG_DIAGNOSTICS)
+        self.assertIn("IPAddressAllow=172.16.0.0/12", SYSTEM_LOG_DIAGNOSTICS)
         self.assertIn("IPAddressAllow=192.168.1.127/32", SYSTEM_LOG_DIAGNOSTICS)
         self.assertNotIn("IPAddressAllow=172.16.0.0/12", DEVICE_HEALTH)
         self.assertIn("IPAddressAllow=192.168.1.127/32", DEVICE_HEALTH)
@@ -245,9 +260,27 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("HOME_BUTLER_ALICE_NOTIFY=live", INCIDENT_NOTIFIER)
         self.assertIn("home_assistant_notify.py", INSTALLER)
         self.assertIn("daily_voice_report.py", INSTALLER)
+        self.assertIn("persistent_scheduler.py", INSTALLER)
+        self.assertIn("scheduler_natural.py", INSTALLER)
         self.assertIn("install_unit home-butler-daily-report.service", INSTALLER)
         self.assertIn("install_unit home-butler-daily-report.timer", INSTALLER)
-        self.assertIn("daily_voice_report.py --live", DAILY_REPORT)
+        self.assertIn("persistent_scheduler.py --tick --live", DAILY_REPORT)
+        self.assertIn("HOME_BUTLER_SCHEDULER_DB=", DAILY_REPORT)
+        self.assertNotIn("HOME_BUTLER_DAILY_REPORT_STATUS=", DAILY_REPORT)
+        self.assertIn(
+            "ReadWritePaths=/home/homebutler/.local/state/home-butler/scheduler",
+            DAILY_REPORT,
+        )
+        self.assertIn(
+            "/home/homebutler/.local/state/home-butler/scheduler", ALICE_SKILL
+        )
+        self.assertIn(
+            "/home/homebutler/.local/state/home-butler/scheduler", LOCAL_CHAT
+        )
+        self.assertIn(
+            'ensure_service_directory "$SERVICE_HOME/.local/state/home-butler/scheduler"',
+            INSTALLER,
+        )
         self.assertNotIn("Restart=", DAILY_REPORT)
         self.assertNotIn("RestartSec=", DAILY_REPORT)
         self.assertIn("StartLimitIntervalSec=0", DAILY_REPORT)
@@ -261,6 +294,7 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("install_unit home-butler-inventory.service", INSTALLER)
         self.assertIn("install_unit home-butler-inventory.timer", INSTALLER)
         self.assertIn("home_assistant_inventory.py", INSTALLER)
+        self.assertIn("safe_attribute_sanitizer.py", INSTALLER)
         self.assertIn("install_unit home-butler-recovery.service", INSTALLER)
         self.assertIn("install_unit home-butler-recovery.timer", INSTALLER)
         self.assertIn("HOME_BUTLER_RECOVERY_MODE=live", RECOVERY)
@@ -280,6 +314,9 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("system_log_diagnostics.py", INSTALLER)
         self.assertIn("device_health.py", INSTALLER)
         self.assertIn("integration_recovery.py", INSTALLER)
+        self.assertIn("TimeoutStartSec=300", SYSTEM_LOG_DIAGNOSTICS)
+        self.assertIn("IPAddressAllow=172.16.0.0/12", SYSTEM_LOG_DIAGNOSTICS)
+        self.assertIn("IPAddressAllow=192.168.1.127/32", SYSTEM_LOG_DIAGNOSTICS)
         self.assertIn("OnUnitActiveSec=60s", SYSTEM_LOG_DIAGNOSTICS_TIMER)
         self.assertIn("OnUnitActiveSec=10s", DEVICE_HEALTH_TIMER)
         self.assertIn("RandomizedDelaySec=0", DEVICE_HEALTH_TIMER)
@@ -288,6 +325,16 @@ class ServiceDefinitionTests(unittest.TestCase):
             "HOME_BUTLER_INTEGRATION_RECOVERY_MODE=live", INTEGRATION_RECOVERY
         )
         self.assertIn("recovery_planner.py", INSTALLER)
+        self.assertIn("recovery_playbook_registry.py", INSTALLER)
+        self.assertIn("recovery_playbook_executor.py", INSTALLER)
+        self.assertIn("device_onboarding.py", INSTALLER)
+        self.assertIn("install_unit home-butler-device-onboarding.service", INSTALLER)
+        self.assertIn("install_unit home-butler-device-onboarding.timer", INSTALLER)
+        self.assertIn("home-butler-device-onboarding.timer", INSTALLER)
+        self.assertIn("User=homebutler", DEVICE_ONBOARDING)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", DEVICE_ONBOARDING)
+        self.assertIn("IPAddressDeny=any", DEVICE_ONBOARDING)
+        self.assertIn("OnUnitActiveSec=1min", DEVICE_ONBOARDING_TIMER)
         self.assertIn("automation_recovery.py", INSTALLER)
         self.assertIn("HOME_BUTLER_AUTOMATION_RECOVERY_MODE=live", AUTOMATION_RECOVERY)
         self.assertIn("HOME_BUTLER_INSTALL_ACTION_TIMERS_MODE", INSTALLER)
@@ -334,6 +381,27 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("alice_skill_health.py", INSTALLER)
         self.assertIn("rotate-alice-webhook.py", INSTALLER)
         self.assertIn("owner_chat.py", INSTALLER)
+        self.assertIn("model_runtime_policy.py", INSTALLER)
+        self.assertIn("memory_store.py", INSTALLER)
+        self.assertIn("behavior_preferences.py", INSTALLER)
+        self.assertIn("safe_maintenance.py", INSTALLER)
+        self.assertIn("maintenance_worker.py", INSTALLER)
+        self.assertIn("context_builder.py", INSTALLER)
+        self.assertIn("turn_observability.py", INSTALLER)
+        self.assertIn("capability_catalog.py", INSTALLER)
+        self.assertIn("bounded_ha_agent.py", INSTALLER)
+        self.assertIn(
+            'ensure_service_directory "$SERVICE_HOME/.local/state/home-butler/memory"',
+            INSTALLER,
+        )
+        self.assertIn("managed_runtime_scripts=()", INSTALLER)
+        self.assertIn("declare -A managed_runtime_script_names=()", INSTALLER)
+        self.assertIn("Refusing unmanaged runtime script:", INSTALLER)
+        self.assertIn("update-home-butler-lan-forward.sh", INSTALLER)
+        self.assertIn(
+            'find "$RUNTIME_DIR/scripts" -maxdepth 1 -type f -print0',
+            INSTALLER,
+        )
         self.assertIn("ha_entity_query.py", INSTALLER)
         self.assertIn("LoadCredential=alice-skill-secret:", ALICE_SKILL)
         self.assertIn("LoadCredential=alice-skill-secret-next:", ALICE_SKILL)
@@ -343,6 +411,15 @@ class ServiceDefinitionTests(unittest.TestCase):
             "ExecStart=/usr/bin/python3 /opt/home-butler/scripts/alice_skill_gateway.py",
             ALICE_SKILL,
         )
+        for unit in (ALICE_SKILL, LOCAL_CHAT):
+            self.assertIn(
+                "HOME_BUTLER_MEMORY_DB=/home/homebutler/.local/state/home-butler/memory/memory.db",
+                unit,
+            )
+            self.assertIn(
+                "/home/homebutler/.local/state/home-butler/memory",
+                unit,
+            )
         enable_block = INSTALLER.split("systemctl enable --now", 1)[1].split(
             "systemctl is-enabled", 1
         )[0]
@@ -361,7 +438,8 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("RuntimeDirectoryMode=0700", ALICE_HEALTH)
         self.assertIn("RuntimeDirectoryPreserve=yes", ALICE_HEALTH)
         self.assertIn("ProtectSystem=strict", ALICE_HEALTH)
-        self.assertIn("OnUnitActiveSec=60s", ALICE_HEALTH_TIMER)
+        self.assertIn("OnBootSec=30s", ALICE_HEALTH_TIMER)
+        self.assertIn("OnUnitActiveSec=10s", ALICE_HEALTH_TIMER)
         self.assertIn("RandomizedDelaySec=0", ALICE_HEALTH_TIMER)
         self.assertIn("User=homebutler", STARTUP_VOICE_STATUS)
         self.assertIn("Group=homebutler", STARTUP_VOICE_STATUS)
@@ -446,18 +524,19 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("OnUnitActiveSec=10min", TIMER)
         self.assertIn("OnBootSec=1min", TIMER)
         self.assertIn("RandomizedDelaySec=30", TIMER)
+        self.assertIn("OnBootSec=90s", STARTUP_SELF_CHECK_TIMER)
+        self.assertIn("RandomizedDelaySec=10s", STARTUP_SELF_CHECK_TIMER)
+        self.assertIn("Persistent=true", STARTUP_SELF_CHECK_TIMER)
+        self.assertNotIn("OnUnitActiveSec=", STARTUP_SELF_CHECK_TIMER)
         self.assertIn("OnBootSec=90s", STARTUP_HA_TIMER)
         self.assertIn("RandomizedDelaySec=15", STARTUP_HA_TIMER)
         self.assertIn("Persistent=true", STARTUP_HA_TIMER)
         self.assertIn("OnUnitActiveSec=10s", INCIDENT_NOTIFIER_TIMER)
         self.assertIn("RandomizedDelaySec=2", INCIDENT_NOTIFIER_TIMER)
         self.assertIn("Persistent=true", INCIDENT_NOTIFIER_TIMER)
-        self.assertIn(
-            "OnCalendar=*-*-* 13:00:00 Asia/Yekaterinburg", DAILY_REPORT_TIMER
-        )
-        self.assertIn("OnCalendar=*-*-* 13:05:00 Asia/Yekaterinburg", DAILY_REPORT_TIMER)
-        self.assertIn("OnCalendar=*-*-* 13:10:00 Asia/Yekaterinburg", DAILY_REPORT_TIMER)
-        self.assertIn("OnCalendar=*-*-* 13:15:00 Asia/Yekaterinburg", DAILY_REPORT_TIMER)
+        self.assertIn("OnBootSec=30s", DAILY_REPORT_TIMER)
+        self.assertIn("OnUnitActiveSec=15s", DAILY_REPORT_TIMER)
+        self.assertNotIn("OnCalendar=", DAILY_REPORT_TIMER)
         self.assertIn("Persistent=true", DAILY_REPORT_TIMER)
         self.assertIn("AccuracySec=1s", DAILY_REPORT_TIMER)
         self.assertIn("RandomizedDelaySec=0", DAILY_REPORT_TIMER)
@@ -473,6 +552,24 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("OnBootSec=5min", OUT_OF_BAND_RECOVERY_TIMER)
         self.assertIn("OnUnitActiveSec=1min", OUT_OF_BAND_RECOVERY_TIMER)
         self.assertIn("RandomizedDelaySec=5", OUT_OF_BAND_RECOVERY_TIMER)
+
+    def test_every_managed_source_unit_has_the_installer_marker(self) -> None:
+        marker = (
+            "# Managed by /root/Jarvis/home-butler/scripts/"
+            "install-home-butler-service.sh"
+        )
+        unit_dir = PROJECT_DIR / "config" / "systemd"
+        missing = [
+            path.name
+            for path in sorted(unit_dir.glob("home-butler*"))
+            if path.is_file() and path.read_text().splitlines()[0] != marker
+        ]
+        self.assertEqual(missing, [])
+
+    def test_dialogue_qualification_allows_six_slow_model_turns(self) -> None:
+        self.assertIn("TimeoutStartSec=600", DIALOGUE_QUALIFICATION)
+        self.assertIn("Restart=no", DIALOGUE_QUALIFICATION)
+        self.assertNotIn("Restart=on-failure", DIALOGUE_QUALIFICATION)
 
     def test_host_recovery_bootstrap_exposes_only_one_forced_command(self) -> None:
         self.assertNotIn('""":"', HOST_RECOVERY_BOOTSTRAP)

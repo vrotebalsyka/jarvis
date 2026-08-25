@@ -37,6 +37,7 @@ SECRET_RE = re.compile(
 )
 LOCK_NAME = ".workspace.lock"
 SELF_MEMORY_PATH = "knowledge/SELF-MEMORY.md"
+MODEL_WRITABLE_TOP_LEVEL = frozenset({"knowledge", "notes", "reports"})
 SAFE_ARTIFACTS = {
     "ha_full_entity_report": Path(
         "/home/homebutler/.local/state/home-butler/ha-full-entity-report.md"
@@ -318,6 +319,22 @@ def write_text(path: object, content: object, root: Path | None = None) -> dict[
             os.close(parent_fd)
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
+
+
+def write_reference_text(
+    path: object, content: object, root: Path | None = None
+) -> dict[str, Any]:
+    """Write non-executable reference data from the conversational model.
+
+    ``proposals`` is reserved for the closed ChangeProposal builder and
+    ``settings`` is reserved for validated behavior tools.  Keeping this
+    guard separate preserves the internal storage API used by deterministic
+    schedulers while removing free-form writes from the production model.
+    """
+    relative = normalize_path(path)
+    if PurePosixPath(relative).parts[0] not in MODEL_WRITABLE_TOP_LEVEL:
+        raise WorkspaceError("workspace folder requires a structured tool")
+    return write_text(relative, content, root)
 
 
 def read_text(path: object, root: Path | None = None) -> dict[str, Any]:

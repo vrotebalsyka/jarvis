@@ -1399,3 +1399,473 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
   `NRestarts=0`.
 - Home Assistant и устройства не перезапускались и не переключались. Полная
   регрессия: 501 тест OK, 1 skipped.
+
+## Checkpoint 2026-08-24: единый persistent scheduler подготовлен в source
+
+- В текущем Git working tree добавлен один SQLite scheduler для напоминаний,
+  отчётов, follow-up и отложенных диагностических результатов. Ежедневный
+  отчёт по умолчанию сохраняет 13:00 `Asia/Yekaterinburg`, но время теперь
+  является строкой TaskSpec в базе, а не константой systemd/supervisor/Windows.
+- `home-butler-daily-report.timer` в source стал частым лёгким tick без
+  `OnCalendar`. Supervisor читает next/last run, verification и missed status
+  из той же базы. Windows installer получает ближайший секрет-безопасный
+  `wake_epoch`; фиксированный wake 12:58 удалён.
+- Natural reminder и перенос ежедневного отчёта проходят model-to-JSON и
+  deterministic validation. Native reminder Станции сохраняет прежнюю
+  idempotency/delivery-unknown границу; его неподтверждённые update/cancel не
+  обещаются. Старый `LAST-REMINDER.json` импортируется без удаления.
+- Targeted Phase 6: 124 теста OK. Полный offline suite: 584 OK, 1 skipped.
+  `evaluate_model.py` теперь использует Runtime Policy и реальный
+  `ha_get_snapshot`, возвращает failure exit при `all_pass=false`; фактический
+  повторный прогон — 5/5 PASS, context 8192. No-cloud audit и PowerShell parser
+  — PASS.
+- Подробная migration note: `reports/PHASE-66-SCHEDULER.md`.
+- Изменения этапа 6 ещё не развёрнуты в `/opt/home-butler`; systemd units не
+  перезапускались, Home Assistant и устройства не изменялись. Live-доставка,
+  изменённое время отчёта и Windows wake требуют отдельной квалификации после
+  разрешённого deployment.
+
+## Checkpoint 2026-08-24: natural bounded tool loop подготовлен в source
+
+- Локальный чат и Alice source теперь используют общий
+  `owner_chat.answer_natural`: ordinary request сначала классифицируется
+  моделью, затем проходит ограниченный HA tool loop. Старый `answer` и
+  `fast_model_answer` сохранены как compatibility/fail-safe facade.
+- Capability catalog строится из HA control catalogue и DeviceGraph. Модель не
+  видит service paths/private entity IDs; она получает только opaque action,
+  closed parameter schema, реальные select options/number ranges, risk и
+  verification.
+- Максимум: bounded read calls, один action-plan, до двух заранее проверенных
+  шагов одного physical device и одна попытка исправить только текст ответа.
+  R3 требует отдельной следующей подтверждающей реплики; prompt injection из
+  имени/атрибута устройства не может превратить read request в action.
+- Fixture посудомойки подтвердил выбор только реального enum `Normal` и порядок
+  program → Start. Coreference fixture подтвердил «Андрей» → «у него» →
+  «отправь его на базу» без entity ID.
+- Targeted natural/capability/facade: 22 OK; широкий regression: 168 OK.
+  Итоговый полный offline suite: 606 OK, 1 skipped. Model
+  evaluator: 5/5 PASS, context 8192, full VRAM. Read-only proof на сохранённом
+  DeviceGraph получил конкретное состояние Андрея без service call.
+- Migration note: `reports/PHASE-66-NATURAL-TOOL-LOOP.md`. Этап 7 ещё не
+  развёрнут в `/opt/home-butler`; живые HA actions и перезапуски не выполнялись.
+
+## Checkpoint 2026-08-24: декларативный recovery registry подготовлен в source
+
+- `recovery_planner.py` сохранён как facade, но candidate selection теперь
+  полностью берётся из единого `recovery_playbook_registry.py`; старый
+  дублирующий набор predicates удалён.
+- Девять существующих recovery-кандидатов описаны закрытой схемой: scope,
+  evidence/preconditions, risk, ordered allow-listed adapters, verification,
+  rollback, attempts, cooldown, stop и escalation. Модель не получает service
+  path, config entry, IP или shell.
+- R1 предлагается только при `confidence:confirmed`. Один unavailable/ping или
+  частичная поломка entity с доступными siblings/alternate path не разрешают
+  recovery всего прибора. Stable-identity/IP-drift остаётся в существующем
+  приватном inventory/executor контуре.
+- Новый executor по умолчанию staged/dry-run. Live R1 требует offline, dry-run,
+  owner approval, controlled-live proof, staged enable, post-observation и
+  rollback flag; сам факт зелёных тестов полномочия не включает.
+- Связанные recovery/service tests: 45 OK. Подробности:
+  `reports/PHASE-66-RECOVERY-PLAYBOOKS.md`. Этап не развёрнут в `/opt`; HA,
+  интеграции, устройства и timers не изменялись.
+- Итоговый полный offline suite после этапа: 615 OK, 1 skipped; no-cloud audit
+  и `git diff --check` — PASS.
+
+## Checkpoint 2026-08-24: onboarding новых устройств подготовлен в source
+
+- Новый `device_onboarding.py` расширяет существующий inventory/knowledge
+  pipeline одной приватной очередью, не создавая второй DeviceGraph. Для new
+  physical device автоматически собираются vendor/model, integration paths,
+  features/capabilities, area hints, classes/aliases, network status,
+  diagnostics, local paths и safety class.
+- Модель получает очередь через новый read-only `ha_get_onboarding_queue` без
+  physical hashes, entity IDs и HA device IDs. Владелец не спрашивается о уже
+  известных name/area/path.
+- Owner answer превращается в structured proposal всех policy fields. Proposal
+  подтверждается по exact content hash. Restricted/unknown device остаётся
+  observe-only.
+- Модель может выбрать только offered plan ID. HA-writing adapter остаётся
+  staged до отдельной live qualification; secret material идёт только через
+  secure-operator callback, не через chat/model/audit. Readback обязателен,
+  delivery-unknown не повторяется.
+- Read-only queue timer подготовлен с AF_UNIX/IPAddressDeny. Targeted
+  onboarding/dialogue/MCP/systemd: 35 OK. Подробности:
+  `reports/PHASE-66-DEVICE-ONBOARDING.md`. Runtime/HA не изменялись.
+- Итоговый полный offline suite после этапа: 625 OK, 1 skipped; no-cloud audit
+  и `git diff --check` — PASS.
+
+## Checkpoint 2026-08-24: structured behavior preferences подготовлены в source
+
+- Добавлены закрытые `behavior_get`, `behavior_set`, `behavior_reset` для
+  allow-listed категорий поведения. Natural request проходит общий bounded
+  classifier и ровно один schema-constrained tool call.
+- Значения проходят deterministic validation и сохраняются в существующий
+  owner-scoped SQLite Memory Store с supersedes/reset semantics. Context Builder
+  всегда передаёт их отдельным ограниченным блоком между local chat и Alice.
+- Через настройки нельзя включить root/shell/arbitrary HA call, отключить
+  verification/cooldown, раскрыть secrets или изменить R3. Выбор R1 profile не
+  включает recovery и не заменяет qualification/owner approval.
+- Свободный `HOME-BUTLER-INSTRUCTIONS.md` сохранён как справочный файл, но больше
+  не вставляется в production system prompt.
+- Behavior/memory/dialogue/service targeted: 143 OK. Полный offline suite:
+  632 OK, 1 skipped. Model evaluator 5/5 PASS, no-cloud audit и
+  `git diff --check` — PASS. Source ещё не развёрнут в `/opt`; runtime/HA/devices
+  не изменялись.
+
+## Checkpoint 2026-08-24: safe maintenance pipeline подготовлен в source
+
+- Production dialogue получил только закрытый `change_proposal_create` с семью
+  обязательными полями. Proposal хранится как untrusted owner-only data и не
+  меняет source/runtime.
+- Generic workspace write ограничен `knowledge/notes/reports`; `proposals` и
+  `settings` доступны только structured builders.
+- Отдельный `maintenance_worker.py` требует явного ручного запуска, чистый
+  active repository и isolated Git worktree. Diff ограничен declared
+  components, text-only/secret-safe и проходит fixed unit/full/security/model/
+  diff qualification в systemd sandbox.
+- Candidate и approval привязаны к exact hashes. Approval не deploy. Deploy
+  требует второй exact hash, совпадение base commit и fixed installer; failed
+  health probe снимает patch и повторно устанавливает предыдущий source.
+- Ни local chat, ни Alice не имеют prepare/capture/approve/deploy tools. Новых
+  timers/services нет. Подробности:
+  `reports/PHASE-66-SAFE-MAINTENANCE.md`. Runtime/HA/devices не изменялись.
+
+## Checkpoint 2026-08-24: медленные Alice turns стали persistent
+
+- Старый timeout оставлял только in-memory `Future`. Теперь он создаёт
+  namespaced `ActiveGoal` в существующем Memory Store и возвращает task ID.
+- Результат сохраняется, добавляется к следующему turn и остаётся доступен по
+  `статус задачи <ID>`.
+- После restart возобновляются только `general`/HA-read/incidents. Mutating
+  control не повторяется и получает честный `delivery_unknown`/blocked status.
+- Recovery ladder теперь переходит к следующему declared safe step только после
+  definite failure, останавливается после verified/no-action и немедленно
+  останавливается при delivery-unknown.
+- Warm прямой `voice_fast`: 30 samples, P95 0.744 s. Полный Alice facade:
+  30/30 model-completed, fallback 0, P50 1.924 s, P95 2.981 s,
+  max 2.993 s при budget 3.2 s. Подробности:
+  `reports/PHASE-66-DEFERRED-ALICE-TASKS.md` и
+  `reports/PHASE-66-ACCEPTANCE.md`.
+- Это source-only изменение. Alice/systemd/HA/devices не перезапускались.
+- Финальная общая source-регрессия: 650 OK, 1 skipped за 115.524 s;
+  model evaluator 5/5, no-cloud audit и `git diff --check` — PASS.
+- Итоговый отчёт: `reports/PHASE-66-RESULT.md`; A–Z:
+  `reports/PHASE-66-ACCEPTANCE.md`. Controlled-live O/P и deployment ожидают
+  отдельного разрешения владельца.
+
+## Checkpoint 2026-08-24: полный secret-safe turn trace подготовлен в source
+
+- Старый retrieval trace сохранял только выбранную память. Теперь Alice и local
+  chat записывают в ту же SQLite Memory Store route/profile/model, точные
+  Ollama token counts, context sections, memory IDs, tool latency, policy,
+  playbook/action/verification, total latency и final disposition.
+- Prompt, текст реплики, tool arguments/results, entity IDs, IP, MAC и secrets
+  в trace не входят. Недопустимые коды редактируются до `unknown`, а общий
+  secret scanner остаётся второй границей.
+- Recovery не получил второй журнал: существующий Incident Store остаётся
+  единым evidence/decision/action/before-after ledger и позволяет объяснить
+  владельцу причину без IP/MAC.
+- Targeted compile и 121 observability/memory/dialogue/model/HA/systemd tests —
+  OK. Подробности: `reports/PHASE-66-OBSERVABILITY.md`.
+- Read-only production audit подтвердил drift: новых memory/agent/scheduler/
+  playbook/trace modules в `/opt/home-butler` ещё нет; deployed units также не
+  имеют нового write path Memory Store. Никакие службы/HA/devices не менялись.
+- Exact deployment/rollback/O-P plan зафиксирован в
+  `reports/PHASE-66-DEPLOYMENT-RUNBOOK.md`; это read-only подготовка, а не
+  разрешение на install/restart/outage.
+
+## Checkpoint 2026-08-24: Phase 66 развёрнут и штатно квалифицирован
+
+- Владелец разрешил deployment Phase 66 и перезапуск только служб Home Butler;
+  controlled O/P outage test отдельно запретил. Перед install создан root-only
+  backup `/var/backups/home-butler/phase66-20260824T132819Z` с проверенными
+  archive checksums/listing.
+- Source установлен в `/opt/home-butler`, managed systemd units обновлены.
+  Home Assistant, его контейнер, устройства, `ollama.service` и
+  `tailscaled.service` не перезапускались и не переключались.
+- Все production profiles сведены к одной GPU-модели
+  `qwen3.5:4b-q4_K_M`, чтобы `OLLAMA_MAX_LOADED_MODELS=1` не вызывал постоянную
+  смену 2B/4B. Profile contexts: voice/structured 8192, dialogue/diagnostic
+  32768, summarizer 16384.
+- После deployment найден model-probe stampede: Alice health каждые 10 секунд
+  выполнял генерацию одновременно с heartbeat/startup qualification при
+  `OLLAMA_NUM_PARALLEL=1`. Частый health теперь проверяет установленную после
+  успешного warm-up readiness без новой генерации; полный inference proof
+  остаётся в startup/heartbeat.
+- Один зависший GPU runner штатно выгружен через `keep_alive=0` и та же модель
+  заново прогрета без restart/config change Ollama. Warm-up завершился за
+  26.9 s, затем Alice gateway сообщил `model_ready`.
+- `home-butler-system-log-diagnostics.service` получил только необходимые
+  allow-ranges для loopback/WSL GPU endpoint и HA; `TimeoutStartSec` исправлен
+  с 30 до 300 секунд. Live semantic read-only run завершился за 103.3 s без
+  recovery/action.
+- Live безопасные проверки: Alice health ready; heartbeat завершён; startup
+  self-check ready (GPU, HA, 215 entities, tool proof); local/public dialogue
+  qualification ready, history/free dialogue подтверждены через оба transport.
+- Main Home Butler services и разрешённые health/monitoring timers active.
+  Action recovery timers `recovery`, `core-recovery`, `automation-recovery`,
+  `integration-recovery` остаются disabled/inactive staged.
+- Итоговая офлайн-регрессия: 661 OK, 1 skipped за 114.699 s. Model evaluator
+  5/5 PASS на Qwen 4B; no-cloud audit и `git diff --check` — PASS.
+- Controlled Funnel/skill/Tailscale/model/HA outage O/P не выполнялся. Поэтому
+  обычное end-to-end здоровье подтверждено, но измеренное время искусственного
+  восстановления O/P пока не заявляется. Актуальный итог:
+  `reports/PHASE-66-RESULT.md`.
+
+## Checkpoint 2026-08-24: фоновые semantic logs больше не забивают модель
+
+- После deployment текущий startup self-check начал ждать единственную очередь
+  Ollama и падать через ~124 секунды. Прямые HA/GPU endpoints при этом были
+  доступны. При временно остановленном только read-only log diagnostic timer
+  тот же proof прошёл за 32.5 секунды: причина была в конкурирующей фоновой
+  классификации, а не в HA или GPU.
+- Минутный сбор HA warning/error сохранён. `system_log_diagnostics.py` теперь
+  отделяет occurrence fingerprint от стабильного semantic fingerprint и
+  кэширует только validated classification, без raw log, timestamp/count,
+  entity dump, IP/MAC или secrets. Cache schema version 1, TTL 30 дней,
+  максимум 4096 записей.
+- Повторы allow-listed `evidence_fields`/`suggested_read_only_checks` от модели
+  теперь детерминированно deduplicate-ятся; неизвестные значения по-прежнему
+  fail closed. Скрытый `unknown` fallback на harmless duplicate устранён.
+- Live read-only proof: первый batch — 7 реально model-classified за 53 s;
+  следующий batch — 5 cache hits, 0 model calls, менее 1 s;
+  `actions_attempted=0`. После восстановления всех monitoring timers startup
+  self-check снова `ready` (GPU, HA, 215 entities, tool proof) за 35.8 s.
+- Фактический dialogue-profile turn и `/api/ps` подтвердили Qwen 4.7B,
+  `context_length=32768`, full VRAM. Полный suite: 664 tests OK, 1 skipped;
+  evaluator 5/5, no-cloud audit и `git diff --check` — PASS.
+- Production scheduler проверен без доставки: `system-daily-report` хранит
+  следующий запуск 2026-08-25 13:00 Asia/Yekaterinburg и wake 12:58. Restart
+  только Home Butler timer/oneshot сохранил task ID/next run/attempts и дал
+  `executed=0`, поскольку задача ещё не due.
+- Следующий штатный timer-cycle без ручного запуска также зелёный: cached log
+  diagnostics завершился менее чем за секунду, startup self-check — `ready` за
+  34 s, heartbeat — success за 8 s. Action recovery timers остались
+  disabled/inactive.
+
+## Checkpoint 2026-08-24: startup self-check больше не дублирует heartbeat
+
+- Обнаружено, что `home-butler-startup-self-check.timer` вопреки назначению
+  запускал полный model/HA proof не только после boot, но и каждые 10 минут.
+  Отдельный `home-butler-heartbeat.timer` уже выполняет периодический health
+  proof, поэтому два тяжёлых задания конкурировали за единственную очередь
+  Ollama и могли задерживать пользовательский диалог.
+- В source и runtime startup timer оставлен one-shot: `OnBootSec=90s`,
+  `RandomizedDelaySec=10s`, без `OnUnitActiveSec`. Heartbeat не менялся и
+  продолжает работать с `OnUnitActiveSec=10min`.
+- Развёрнут только этот Home Butler timer. После `daemon-reload` и restart он
+  один раз выполнил read-only self-check: `ready`, GPU, HA, 215 entities,
+  tool-call verified; затем перешёл в `active (elapsed)` с `NEXT=n/a`.
+- Main Home Butler services active; Alice health сообщает `ready`. Recovery,
+  core-recovery, automation-recovery и integration-recovery timers остаются
+  disabled/inactive. Home Assistant, устройства, Ollama и Tailscale не
+  перезапускались и не переключались.
+- Backup прежнего unit:
+  `/var/backups/home-butler/phase66-startup-once-20260824T165919Z`.
+- Финальная регрессия: 664 tests OK, 1 skipped за 119.976 s; evaluator 5/5,
+  no-cloud audit, systemd verify и `git diff --check` — PASS. Controlled O/P
+  по-прежнему не выполнялся.
+
+## Checkpoint 2026-08-24: scheduler single-source invariant закреплён тестом
+
+- Source-аудит всех production scripts/systemd units подтвердил: время
+  `13:00` встречается ровно один раз — как default seed recurrence задачи
+  `system-daily-report` в persistent scheduler. Это допустимый default,
+  хранящийся после инициализации в SQLite TaskSpec.
+- Systemd daily timer не имеет `OnCalendar`; operations supervisor читает
+  scheduler status; Windows wake helper читает `--wake-json`; local/Alice chat
+  меняют ту же TaskSpec. Второго operational clock нет.
+- Добавлен regression-тест, который сканирует production source/config и
+  запрещает повторный hardcode `13:00` вне scheduler seed. Targeted scheduler,
+  supervisor, systemd и Windows wake: 35 tests OK.
+- Полная регрессия: 665 tests OK, 1 skipped за 107.525 s; evaluator 5/5,
+  no-cloud audit и `git diff --check` — PASS.
+- В `/opt` синхронизирован только `operations_supervisor.py` с безопасной
+  формулировкой docstring; службы не перезапускались. Backup:
+  `/var/backups/home-butler/phase66-scheduler-source-20260824T170835Z`.
+  Scheduler DB, расписание, Home Assistant, устройства, Ollama и Tailscale не
+  изменялись.
+
+## Checkpoint 2026-08-24: source/runtime parity закрыта fail-closed guard
+
+- Secret-safe hash audit сравнил фактически установленный `/opt` и systemd с
+  working tree. Все 58 managed units совпали. Среди runtime scripts найдено
+  семь старых `*.before-*` backup-копий и один устаревший
+  `ollama_model_alias.py`, который больше не входит в installer и не вызывается
+  ни одним unit/process.
+- Восемь файлов не удалены, а перенесены с mode 0600 в root-only backup
+  `/var/backups/home-butler/phase66-runtime-drift-20260824T171423Z`.
+  После cleanup: 67 runtime scripts, 0 hash mismatches, 0 файлов без source;
+  58 units, 0 mismatches/missing.
+- Дополнительно подтверждены normalized parity для Hermes config, service
+  config, SOUL/HEARTBEAT/TOOLS/AGENTS policies, пяти skills, HA env и known
+  hosts без вывода содержимого или credentials.
+- Installer теперь строит закрытый managed script set и fail-closed прекращает
+  deployment, если рядом с production code обнаружен любой дополнительный
+  файл. Backups должны находиться только в `/var/backups/home-butler`.
+- Штатный runtime policy proof из `/opt` вернул `RUNTIME_POLICY_OK`; main
+  services active, local chat HTTP 200, Alice health ready. Recovery-action
+  timers по-прежнему disabled/inactive. Никакая служба не перезапускалась.
+- Targeted installer/hygiene: 10 tests OK, `bash -n` PASS. Полная регрессия:
+  665 tests OK, 1 skipped за 111.615 s; evaluator 5/5, no-cloud audit и
+  `git diff --check` — PASS.
+
+## Checkpoint 2026-08-24: повторный outage после recovery больше не теряется
+
+- Live read-only audit подтвердил cadence device-health/notifier 10 секунд.
+  На момент проверки один полный outage был подтверждён за 20 секунд и принят
+  колонкой с первой попытки через 21 секунду; HA/device action не выполнялся.
+- Найден lifecycle-дефект в физическом rollup: если device восстановился,
+  recovery notice уже был принят, а затем устройство снова отпало в пределах
+  180-секундного correlation window, новый raw incident приклеивался к старой
+  строке и наследовал accepted confirmed notice. Повторное сообщение могло быть
+  подавлено.
+- `incident_monitor.py` теперь коррелирует flap с прежним episode только пока
+  recovery ещё не был озвучен. После accepted/delivery_unknown recovery notice
+  новый confirmed outage получает новый device-incident. Идемпотентный repair
+  также разделяет уже открытые legacy-rollups, сохраняя обе части истории.
+- Source и `/opt` совпадают; перезапущен только
+  `home-butler-incident-monitor.service`. Device health/notifier active,
+  action-recovery timers disabled/inactive. Backup прежнего runtime-файла:
+  `/var/backups/home-butler/phase66-repeat-outage-20260824T173300Z`.
+- Qualification renderer дополнительно отклоняет accepted timestamps раньше
+  confirmation/recovery. Невозможная историческая метка больше не выдаётся как
+  отрицательная задержка и не засчитывается proof: live UI показывает
+  `alert_seconds=null`, `waiting_alert`. Перезапущен только local-chat Home
+  Butler; HTTP 200 подтверждён. Backup прежнего renderer:
+  `/var/backups/home-butler/phase66-qualification-time-20260824T174200Z`.
+- Три новых regression tests проходят; полный suite: 668 tests OK, 1 skipped
+  за 116.574 s; evaluator 5/5, no-cloud audit, `git diff --check` и runtime hash
+  parity — PASS.
+
+## Checkpoint 2026-08-24: scheduler wake следует TaskSpec, server default следует policy
+
+- Completion-аудит нашёл два дрейфа, которые прежняя A–Z таблица не отражала:
+  Windows WSL Runtime всё ещё имел старый ежедневный trigger `12:58`, а
+  `windows_gpu_supervisor.py` сохранял server default context 2048, хотя
+  production model calls уже использовали 8K/16K/32K profiles.
+- Добавлены bounded `windows_wake_sync.py` и нативный
+  `windows-wake-sync.cs`. Helper принимает только один проверенный epoch,
+  обновляет только `Home Butler Scheduler Wake` и запускает только exact
+  `Home Butler WSL Runtime`. Скрытый `Home Butler Scheduler Wake Sync` читает
+  ближайший epoch из Ubuntu каждые пять минут, когда Windows уже работает;
+  PowerShell в runtime action отсутствует.
+- Live readback: WSL Runtime теперь имеет только logon trigger; отдельный
+  one-shot назначен на 25 августа 12:58, `WakeToRun=true`; sync task завершился
+  с кодом 0; private evidence имеет owner `homebutler`, mode 0600. Фактическое
+  пробуждение из sleep ещё не выполнялось и не называется доказанным.
+- Windows GPU supervisor и legacy fallback получают context из единого
+  `ModelRuntimePolicy.dialogue=32768`, а не из literal 2048. Перезапущен только
+  supervisor task; Ollama PID остался 14584, endpoint 0.32.5 не прерывался.
+- Runtime backup scheduler/Windows task XML:
+  `/var/backups/home-butler/phase66-wake-sync-20260824T230839`.
+  Home Assistant, устройства, `ollama.service` и Tailscale не
+  перезапускались/не переключались; scheduler tick выполнил `executed=0`.
+- Финальная полная регрессия после обоих исправлений: 678 tests OK, 1 skipped
+  за 117.860 s. Отдельный evidence-test теперь запрещает снова скрыть
+  scheduler-delivery/wake live-gates формулировкой «остались только O/P».
+
+## Checkpoint 2026-08-24: GPU supervisor теперь single-instance
+
+- Read-only process audit нашёл два WSL-процесса
+  `windows_gpu_supervisor.py`: после перерегистрации Windows task старый
+  Linux child остался сиротой, а новая task подняла второй.
+- Добавлен приватный non-following `flock` с owner `homebutler`, mode
+  0600 и блокировкой на всю жизнь процесса. Второй supervisor завершается
+  без запуска Ollama и без ошибки task.
+- Старые exact supervisor processes завершены, задача подняла ровно
+  один PID. Завершение Windows task также закрыло её дочерний
+  `ollama.exe`: PID сменился 14584 → 70996. Этот побочный restart не
+  скрыт: новый supervisor автоматически восстановил Ollama 0.32.5.
+  Home Assistant, устройства, Tailscale и Linux `ollama.service` не
+  перезапускались.
+- После холодного запуска evaluator 5/5 PASS; отдельный dialogue-turn
+  загрузил Qwen 4.7B Q4_K_M полностью в VRAM и `/api/ps` показал
+  `context_length=32768`, `size_vram=3779686562`.
+- Runtime backup прежнего supervisor:
+  `/var/backups/home-butler/phase66-gpu-lock-20260824T235500`.
+  Full regression: 679 tests OK, 1 skipped за 134.002 s; no-cloud audit и
+  `git diff --check` — PASS.
+
+## Checkpoint 2026-08-24: benchmark больше не смешивает history и runtime
+
+- `PHASE-66-MODEL-BENCHMARK.md` содержал верный current override в шапке,
+  но ниже без чёткой временной метки сохранял historical source-only
+  утверждения: 2B/4096 runtime, evaluator 4/5, semantic diagnostic red
+  и catalog/log pipeline только в working tree.
+- Migration sections теперь явно помечены как исторические snapshots.
+  Добавлен current production readback: Qwen 4.7B Q4_K_M,
+  dialogue 32768, full VRAM, evaluator 5/5, warm Alice 30/30 и P95 2.981 s.
+  Исходный raw semantic prompt failure не скрыт, но отделён от
+  текущего bounded Semantic Entity Catalog pipeline.
+- Evidence regression теперь падает, если benchmark снова выдаёт
+  старый source-only status за current runtime. Full suite: 680 tests OK,
+  1 skipped за 119.393 s; runtime и Home Assistant не изменялись.
+
+## Checkpoint 2026-08-24: phase-отчёты сверены с развёрнутым runtime
+
+- Source/runtime SHA-256 совпали для Alice gateway, `owner_chat`,
+  Memory Store, bounded HA agent, capability catalog, onboarding, recovery
+  playbook registry/executor/planner и owner-only maintenance worker.
+- Исправлены пять устаревших current-status claims: deferred Alice tasks,
+  recovery playbooks, natural tool loop, onboarding и safe maintenance больше
+  не называют уже установленный code «только working tree».
+- Deployment и authority разделены: пять action/recovery timers
+  `disabled/inactive`; maintenance не имеет timer и остаётся ручным
+  owner-invoked worker. Onboarding, наоборот, имеет активный read-only
+  timer; last oneshot завершился `0/SUCCESS`, queue mode 0600,
+  `pending_count=0`, `proposal_count=0`, `actions_performed=0`.
+- Три evidence-контракта запрещают вернуть этот дрейф. Full suite:
+  683 tests OK, 1 skipped за 115.902 s; no live action, HA/device restart
+  или transport outage не выполнялись.
+
+## Checkpoint 2026-08-25: owner Alice health check больше не обходит systemd credentials
+
+- Старая owner-команда запускала source
+  `alice_skill_health.py --probe-only` напряму. Вне systemd `LoadCredential`
+  она fail-closed не видела Alice credentials и могла ложно выглядеть как
+  сбой guardian.
+- Runtime timer при этом был здоров: `enabled/active`, gateway
+  `active (running)`, tunnel `active (exited)`, последние runs писали
+  `alice_skill_health=ready`. Source/runtime hashes health/funnel code и
+  health service/timer совпали.
+- Безопасная ручная команда теперь читает только свежий root-private
+  status: `python3 /opt/home-butler/scripts/alice_skill_health.py --check-status`.
+  Live readback: `alice_skill_health=ready`; recovery и restart не запускались.
+- Добавлен восьмой evidence-контракт; full suite: 684 tests OK,
+  1 skipped за 112.614 s.
+- Read-only cross-midnight scheduler readback: единственная enabled задача
+  `system-daily-report` остаётся `not_due`, next run 25 августа 13:00
+  Asia/Yekaterinburg, attempts 0, verification `not_run`. Windows one-shot
+  `Ready`, one trigger, `WakeToRun=true`, next 12:58; sync result 0. Local chat
+  HTTP 200. Фактическая доставка/wake ещё не наступили и не названы
+  пройденными.
+
+## Checkpoint 2026-08-25: natural onboarding доведён до production facade
+
+- Completion-аудит нашёл последний разрыв: read-only onboarding queue была
+  доступна MCP, но обычный ответ владельца из local chat/Alice не проходил весь
+  путь до proposal. Кроме того, малая модель могла неточно переписать opaque
+  onboarding ID.
+- Queue мигрирована schema 1 → 2 с идемпотентным сохранением items. Проверенные
+  partial owner answers теперь накапливаются между репликами; невалидная policy
+  не сохраняется. Модель получает только human name, а deterministic facade
+  разрешает exact private item/hash и требует фразу
+  `Подтверждаю предложение для <имя>.`
+- Фактическая Qwen 4.7B прошла proposal/approval flow: комната «спальня»
+  сохранена в proposal, exact confirmation дала `approved`, при этом
+  `actions_performed=0` и Home Assistant не изменялся. Evaluator расширен до
+  7/7 и проходит полностью.
+- Защищённый production local-chat POST с реальными cookie, допустимым Origin и
+  CSRF на `Есть новые устройства?` завершился HTTP 200. Предыдущий synthetic
+  POST без Origin был корректно отклонён защитой; protection не ослаблялась.
+- Installer closed set дополнен уже существующим bounded LAN forwarding helper.
+  Повторный deploy перезапускал только Home Butler services. Source/runtime
+  parity: 68/68 scripts и 58/58 units, mismatch отсутствует.
+- Финальный offline suite: 693 tests OK, 1 skipped; evaluator 7/7,
+  no-cloud audit, manifest hygiene и `git diff --check` — PASS. Core services и
+  read-only onboarding timer active; Alice health ready; local/LAN HTTP 200;
+  пять action/recovery timers disabled/inactive.
+- Daily report всё ещё `not_due`: next run 25 августа 13:00, wake 12:58,
+  attempts 0, verification `not_run`. Фактическая доставка/wake и controlled
+  O/P остаются внешними live-гейтами и не называются завершёнными.

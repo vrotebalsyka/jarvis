@@ -115,6 +115,16 @@ class ModelWorkspaceTests(unittest.TestCase):
             self.assertIn("untrusted reference data", context["trust_boundary"])
             self.assertFalse(context["memory_truncated"])
 
+    def test_free_form_model_write_cannot_enter_proposals_or_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_root(directory)
+            workspace.write_reference_text("reports/safe.md", "справка", root)
+            for path in ("proposals/free-form.json", "settings/policy.yaml"):
+                with self.subTest(path=path), self.assertRaises(
+                    workspace.WorkspaceError
+                ):
+                    workspace.write_reference_text(path, "unsafe: true", root)
+
 
 if __name__ == "__main__":
     unittest.main()

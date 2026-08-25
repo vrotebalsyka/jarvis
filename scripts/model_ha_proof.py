@@ -8,6 +8,7 @@ import http.client
 import json
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,6 +18,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import home_assistant_read as ha_adapter  # noqa: E402
+import model_runtime_policy  # noqa: E402
+import turn_observability  # noqa: E402
 from ollama_endpoint import (  # noqa: E402
     EndpointConfigError,
     OllamaEndpoint,
@@ -24,7 +27,7 @@ from ollama_endpoint import (  # noqa: E402
 )
 
 
-MODEL = "home-butler"
+MODEL = model_runtime_policy.get_profile("structured").model
 TOOL_NAME = "ha_get_snapshot"
 SOURCE = "Home Assistant via ha_get_snapshot"
 MAX_VOICE_SUMMARY_CHARS = 360
@@ -172,6 +175,9 @@ def call_ollama(
     *,
     timeout: float = 120,
 ) -> dict[str, Any]:
+    started = time.monotonic()
+    document: dict[str, Any] | None = None
+    call_status = "failed"
     connection = http.client.HTTPConnection(endpoint.host, endpoint.port, timeout=timeout)
     try:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -185,11 +191,20 @@ def call_ollama(
         raw = response.read(MAX_RESPONSE_BYTES + 1)
         if response.status != 200:
             raise ProofError("Ollama request failed")
-        return parse_document(raw)
+        document = parse_document(raw)
+        call_status = "completed"
+        return document
     except (OSError, TimeoutError, http.client.HTTPException) as error:
         raise ProofError("Ollama is unreachable") from error
     finally:
         connection.close()
+        turn_observability.record_model_call(
+            payload,
+            document,
+            path=path,
+            latency_ms=round((time.monotonic() - started) * 1000),
+            status=call_status,
+        )
 
 
 def get_ollama(endpoint: OllamaEndpoint, path: str) -> dict[str, Any]:
@@ -275,7 +290,7 @@ def validate_model_fact(actual: dict[str, Any], expected: dict[str, Any]) -> Non
 def gpu_evidence(
     document: dict[str, Any], expected_model: str = MODEL
 ) -> dict[str, Any]:
-    if expected_model not in {MODEL, "home-butler-voice"}:
+    if expected_model not in model_runtime_policy.LOCAL_MODELS | {"home-butler-voice"}:
         raise ProofError("Ollama model evidence target is not allowed")
     models = document.get("models")
     if not isinstance(models, list):
@@ -314,7 +329,7 @@ def run_proof(
     *,
     require_gpu: bool = False,
     endpoint_loader: Callable[[], OllamaEndpoint] = load_runtime_ollama_endpoint,
-    ollama_call: Callable[[OllamaEndpoint, str, dict[str, Any]], dict[str, Any]] = call_ollama,
+    ollama_call: Callable[..., dict[str, Any]] = call_ollama,
     ollama_get: Callable[[OllamaEndpoint, str], dict[str, Any]] = get_ollama,
     snapshot_reader: Callable[[str], tuple[dict[str, Any], int]] = ha_adapter.execute_safely,
 ) -> dict[str, Any]:
@@ -328,17 +343,14 @@ def run_proof(
         "Получи текущее состояние одной доступной сущности Home Assistant. "
         "Сначала вызови ha_get_snapshot. Не выдумывай данные."
     )
-    first_payload = {
-        "model": MODEL,
-        "stream": False,
-        "think": False,
-        "keep_alive": "24h",
-        "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 96},
-        "messages": [
+    runtime_profile = model_runtime_policy.get_profile("structured")
+    first_payload = model_runtime_policy.build_chat_payload(
+        "structured",
+        [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "tools": [
+        tools=[
             {
                 "type": "function",
                 "function": {
@@ -352,8 +364,13 @@ def run_proof(
                 },
             }
         ],
-    }
-    first = ollama_call(endpoint, "/api/chat", first_payload)
+    )
+    first = ollama_call(
+        endpoint,
+        "/api/chat",
+        first_payload,
+        timeout=runtime_profile.request_timeout_seconds,
+    )
     tool_call = extract_tool_call(first)
 
     snapshot, exit_code = snapshot_reader("snapshot")
@@ -362,14 +379,9 @@ def run_proof(
     expected = select_proof_entity(snapshot)
     tool_result = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
 
-    second_payload = {
-        "model": MODEL,
-        "stream": False,
-        "think": False,
-        "keep_alive": "24h",
-        "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 192},
-        "format": output_schema(expected),
-        "messages": [
+    second_payload = model_runtime_policy.build_chat_payload(
+        "structured",
+        [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
             {
@@ -383,8 +395,14 @@ def run_proof(
                 "content": "Верни только JSON из результата инструмента без изменений.",
             },
         ],
-    }
-    second = ollama_call(endpoint, "/api/chat", second_payload)
+        response_format=output_schema(expected),
+    )
+    second = ollama_call(
+        endpoint,
+        "/api/chat",
+        second_payload,
+        timeout=runtime_profile.request_timeout_seconds,
+    )
     model_fact = parse_model_fact(second)
     validate_model_fact(model_fact, expected)
 
@@ -416,7 +434,7 @@ def run_voice_read_proof(
     *,
     question: str = "Что с Home Assistant?",
     endpoint_loader: Callable[[], OllamaEndpoint] = load_runtime_ollama_endpoint,
-    ollama_call: Callable[[OllamaEndpoint, str, dict[str, Any]], dict[str, Any]] = call_ollama,
+    ollama_call: Callable[..., dict[str, Any]] = call_ollama,
     ollama_get: Callable[[OllamaEndpoint, str], dict[str, Any]] = get_ollama,
     snapshot_reader: Callable[[str], tuple[dict[str, Any], int]] = ha_adapter.execute_safely,
     inventory_reader: Callable[[], dict[str, Any]] | None = None,
@@ -428,17 +446,14 @@ def run_voice_read_proof(
         "read-only инструмент. Ничего не изменяй."
     )
     user = "Прочитай Home Assistant сейчас."
-    first_payload = {
-        "model": MODEL,
-        "stream": False,
-        "think": False,
-        "keep_alive": "24h",
-        "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 48},
-        "messages": [
+    runtime_profile = model_runtime_policy.get_profile("voice_fast")
+    first_payload = model_runtime_policy.build_chat_payload(
+        "voice_fast",
+        [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "tools": [
+        tools=[
             {
                 "type": "function",
                 "function": {
@@ -452,8 +467,13 @@ def run_voice_read_proof(
                 },
             }
         ],
-    }
-    first = ollama_call(endpoint, "/api/chat", first_payload)
+    )
+    first = ollama_call(
+        endpoint,
+        "/api/chat",
+        first_payload,
+        timeout=runtime_profile.request_timeout_seconds,
+    )
     tool_call = extract_tool_call(first)
     snapshot, exit_code = snapshot_reader("snapshot")
     if exit_code != 0:
@@ -482,13 +502,9 @@ def run_voice_read_proof(
         "Markdown, эмодзи и другие числа."
         + device_instruction
     )
-    second_payload = {
-        "model": MODEL,
-        "stream": False,
-        "think": False,
-        "keep_alive": "24h",
-        "options": {"temperature": 0.1, "num_ctx": 2048, "num_predict": 64},
-        "messages": [
+    second_payload = model_runtime_policy.build_chat_payload(
+        "voice_fast",
+        [
             {"role": "system", "content": spoken_system},
             {"role": "user", "content": user},
             {"role": "assistant", "content": "", "tool_calls": [tool_call]},
@@ -502,13 +518,21 @@ def run_voice_read_proof(
                 "content": "Кратко доложи владельцу текущее состояние Home Assistant.",
             },
         ],
-    }
-    second = ollama_call(endpoint, "/api/chat", second_payload)
+    )
+    second = ollama_call(
+        endpoint,
+        "/api/chat",
+        second_payload,
+        timeout=runtime_profile.request_timeout_seconds,
+    )
     message = second.get("message")
     content = message.get("content") if isinstance(message, dict) else None
     spoken_answer, spoken_answer_source = safe_voice_summary(content, summary_facts)
     accelerator = gpu_evidence(ollama_get(endpoint, "/api/ps"))
-    if accelerator["fully_on_gpu"] is not True or accelerator["context_length"] != 2048:
+    if (
+        accelerator["fully_on_gpu"] is not True
+        or accelerator["context_length"] != runtime_profile.context_window
+    ):
         raise ProofError("voice Home Assistant proof is not on the fixed GPU profile")
     return {
         "schema_version": 1,

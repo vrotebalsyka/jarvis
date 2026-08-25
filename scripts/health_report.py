@@ -27,14 +27,16 @@ from health_report_core import (
     strict_json_loads,
 )
 from ollama_endpoint import EndpointConfigError, load_runtime_ollama_endpoint
+import model_runtime_policy
 
 
 OLLAMA_HOST: str | None = None
 OLLAMA_PORT: int | None = None
 OLLAMA_PATH = "/api/generate"
-OLLAMA_TIMEOUT_SECONDS = 180
+STRUCTURED_PROFILE = model_runtime_policy.get_profile("structured")
+OLLAMA_TIMEOUT_SECONDS = STRUCTURED_PROFILE.request_timeout_seconds
 MAX_MODEL_RESPONSE_BYTES = 1_048_576
-ALLOWED_MODELS = {"home-butler", "home-butler:latest"}
+ALLOWED_MODELS = {STRUCTURED_PROFILE.model, f"{STRUCTURED_PROFILE.model}:latest"}
 HA_STATUS_TEXT = {
     "not_configured": "не настроен",
     "dns_failure": "ошибка разрешения имени",
@@ -76,20 +78,11 @@ def build_model_payload(
         "не добавляй и не пропускай ID. Свободный текст запрещён.\n"
         + json.dumps(model_input, ensure_ascii=False, separators=(",", ":"))
     )
-    output_items = len(analysis.facts) + len(analysis.problems) + len(analysis.missing)
-    return {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,
-        "format": build_output_schema(analysis),
-        "keep_alive": "24h",
-        "options": {
-            "temperature": 0,
-            "num_ctx": 2048,
-            "num_predict": min(2048, max(512, 128 + output_items * 10)),
-        },
-    }
+    return model_runtime_policy.build_generate_payload(
+        "structured",
+        prompt,
+        response_format=build_output_schema(analysis),
+    )
 
 
 ConnectionFactory = Callable[..., http.client.HTTPConnection]
@@ -444,7 +437,11 @@ def run(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate a fail-closed local health report.",
     )
-    parser.add_argument("--model", choices=sorted(ALLOWED_MODELS), default="home-butler")
+    parser.add_argument(
+        "--model",
+        choices=sorted(ALLOWED_MODELS),
+        default=STRUCTURED_PROFILE.model,
+    )
     args = parser.parse_args(argv)
 
     raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)

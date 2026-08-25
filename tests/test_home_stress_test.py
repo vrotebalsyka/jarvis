@@ -56,9 +56,11 @@ class HomeStressTestTests(unittest.TestCase):
             after = "off" if action == "turn_off" else "on"
             return ({"status": "verified", "after_state": after}, 0)
 
-        def model_call(_endpoint, path: str, payload: dict[str, object]):
+        def model_call(_endpoint, path: str, payload: dict[str, object], **kwargs):
             self.assertEqual(path, "/api/generate")
-            self.assertEqual(payload["model"], "home-butler")
+            runtime = stress.model_runtime_policy.get_profile("diagnostic")
+            self.assertEqual(payload["model"], runtime.model)
+            self.assertEqual(kwargs["timeout"], runtime.request_timeout_seconds)
             moment[0] += 70.0
             events.append(("model", "analyze"))
             return {"response": "Подробный диагностический анализ.", "eval_count": 384}
@@ -67,10 +69,10 @@ class HomeStressTestTests(unittest.TestCase):
             "home_stress_test.model_ha_proof.get_ollama",
             return_value={
                 "models": [{
-                    "name": "home-butler:latest",
+                    "name": stress.MODEL,
                     "size": 100,
                     "size_vram": 100,
-                    "context_length": 8192,
+                    "context_length": 32768,
                 }]
             },
         ):
@@ -236,7 +238,11 @@ class HomeStressTestTests(unittest.TestCase):
         def sleeper(seconds: float) -> None:
             moment[0] += seconds
 
-        def model_call(_endpoint, _path: str, _payload: dict[str, object]):
+        def model_call(_endpoint, _path: str, _payload: dict[str, object], **kwargs):
+            self.assertEqual(
+                kwargs["timeout"],
+                stress.model_runtime_policy.get_profile("diagnostic").request_timeout_seconds,
+            )
             events.append(("model", "analyze"))
             moment[0] += 70.0
             return {"response": "Диагностический анализ.", "eval_count": 384}
@@ -245,10 +251,10 @@ class HomeStressTestTests(unittest.TestCase):
             "home_stress_test.model_ha_proof.get_ollama",
             return_value={
                 "models": [{
-                    "name": "home-butler:latest",
+                    "name": stress.MODEL,
                     "size": 100,
                     "size_vram": 100,
-                    "context_length": 8192,
+                    "context_length": 32768,
                 }]
             },
         ):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import functools
 import hashlib
 import http.server
 import json
@@ -25,10 +26,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import home_assistant_control as ha_control  # noqa: E402
+import context_builder  # noqa: E402
 import incident_status  # noqa: E402
+import memory_store  # noqa: E402
 import model_ha_control  # noqa: E402
 import model_ha_proof  # noqa: E402
+import model_runtime_policy  # noqa: E402
 import owner_chat  # noqa: E402
+import turn_observability  # noqa: E402
 from ollama_endpoint import EndpointConfigError  # noqa: E402
 
 
@@ -49,15 +54,18 @@ MAX_SESSIONS = 32
 SESSION_TTL_SECONDS = 20 * 60
 MAX_HISTORY_MESSAGES = 8
 MAX_HISTORY_CONTENT_CHARS = 1000
-MODEL_TIMEOUT_SECONDS = 3.6
 YANDEX_RESPONSE_LIMIT_SECONDS = 4.5
-TURN_RESPONSE_BUDGET_SECONDS = 3.2
+VOICE_RUNTIME_PROFILE = "voice_fast"
+VOICE_POLICY = model_runtime_policy.get_profile(VOICE_RUNTIME_PROFILE)
+TURN_RESPONSE_BUDGET_SECONDS = VOICE_POLICY.latency_budget_seconds
 MAX_ACTIVE_TURNS = 4
-VOICE_NUM_CTX = 2048
-VOICE_NUM_PREDICT = 64
-VOICE_KEEP_ALIVE = "24h"
-VOICE_MODEL = owner_chat.MODEL
-VOICE_TEMPERATURE = 0.15
+DEFERRED_INTENT_PREFIX = "alice-deferred-v1:"
+DEFERRED_RESUMABLE_ROUTES = frozenset({"general", "home_assistant", "incidents"})
+DEFERRED_STATUS_RE = re.compile(
+    r"\b(?:статус|результат|что\s+с)\s+(?:прошл(?:ой|ую)\s+)?задач(?:и|ей|у)"
+    r"(?:\s+([a-f0-9]{6,32}))?\b",
+    re.IGNORECASE,
+)
 MODEL_READINESS_RETRY_SECONDS = 10.0
 RATE_WINDOW_SECONDS = 10
 RATE_REQUESTS = 20
@@ -72,6 +80,10 @@ EXIT_PHRASES = {
     "до свидания",
 }
 PING_PHRASES = {"ping", "пинг"}
+HEALTH_MODEL_COMMAND = "__homebutler_health_model_v1__"
+HEALTH_HA_READ_COMMAND = "__homebutler_health_ha_read_v1__"
+HEALTH_MODEL_TEXT = "Локальная модель отвечает."
+HEALTH_HA_READ_TEXT = "Home Assistant доступен для чтения."
 
 
 class GatewayError(RuntimeError):
@@ -554,13 +566,8 @@ def fast_model_answer(
             question,
             {"mode": "voice_conversation"},
             history,
-            timeout_seconds=MODEL_TIMEOUT_SECONDS,
-            num_ctx=VOICE_NUM_CTX,
-            num_predict=VOICE_NUM_PREDICT,
-            keep_alive=VOICE_KEEP_ALIVE,
-            model_name=VOICE_MODEL,
-            temperature=VOICE_TEMPERATURE,
             profile=profile,
+            runtime_profile=VOICE_RUNTIME_PROFILE,
         )
     if route == "home_assistant":
         return owner_chat.voice_ha_response(question)
@@ -569,35 +576,106 @@ def fast_model_answer(
     return owner_chat.answer(question, context, history)
 
 
+def natural_voice_answer(
+    question: str,
+    context: dict[str, Any],
+    history: list[dict[str, str]],
+) -> str:
+    """Voice facade: bounded HA tools with the established fast fallback."""
+    return owner_chat.answer_natural(
+        question,
+        context,
+        history,
+        voice=True,
+        runtime_profile=VOICE_RUNTIME_PROFILE,
+        fallback_answerer=fast_model_answer,
+    )
+
+
 def warm_voice_model() -> None:
     endpoint = owner_chat.load_runtime_ollama_endpoint()
-    model_ha_proof.call_ollama(
+    version = model_ha_proof.get_ollama(endpoint, "/api/version")
+    if (
+        set(version) != {"version"}
+        or not isinstance(version.get("version"), str)
+        or not version["version"]
+    ):
+        raise GatewayError("voice model endpoint is malformed")
+    result = model_ha_proof.call_ollama(
         endpoint,
         "/api/generate",
-        {
-            "model": VOICE_MODEL,
-            "prompt": "Ответь одним словом: готов",
-            "stream": False,
-            "think": False,
-            "keep_alive": VOICE_KEEP_ALIVE,
-            "options": {
-                "temperature": 0,
-                "num_ctx": VOICE_NUM_CTX,
-                "num_predict": 8,
-            },
-        },
-        timeout=120,
+        model_runtime_policy.build_generate_payload(
+            VOICE_RUNTIME_PROFILE,
+            "Ответь одним словом: готов",
+        ),
+        timeout=VOICE_POLICY.request_timeout_seconds,
     )
+    generated = result.get("response")
+    if not isinstance(generated, str) or not generated.strip():
+        raise GatewayError("voice model returned an empty probe")
     evidence = model_ha_proof.gpu_evidence(
         model_ha_proof.get_ollama(endpoint, "/api/ps"),
-        expected_model=VOICE_MODEL,
+        expected_model=VOICE_POLICY.model,
     )
     if endpoint.host == "127.0.0.1" or evidence.get("fully_on_gpu") is not True:
         raise GatewayError("voice model is not fully loaded on the GPU")
 
 
+def synthetic_ha_read() -> None:
+    """Prove the read-only HA adapter without exposing facts or creating actions."""
+
+    snapshot, exit_code = owner_chat.ha_adapter.execute_safely("snapshot")
+    if (
+        exit_code != 0
+        or not isinstance(snapshot, dict)
+        or snapshot.get("status") not in {"healthy", "stale_data"}
+        or snapshot.get("service_calls") not in {None, 0}
+    ):
+        raise GatewayError("Home Assistant read probe failed")
+
+
 def _history_item(role: str, content: str) -> dict[str, str]:
     return {"role": role, "content": content[:MAX_HISTORY_CONTENT_CHARS]}
+
+
+def _trace_skill_process(method: Callable[..., tuple[dict[str, Any], str]]):
+    """Persist a bounded trace for work executed inside the deadline worker."""
+
+    @functools.wraps(method)
+    def wrapped(
+        application: "SkillApplication", document: dict[str, Any]
+    ) -> tuple[dict[str, Any], str]:
+        try:
+            turn = validate_request(document, application.config)
+            session_key = context_builder.session_fingerprint(turn.session_id)
+        except (GatewayError, context_builder.ContextBuilderError):
+            return method(application, document)
+        token = turn_observability.begin_turn(
+            owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+            transport="alice",
+            session_key=session_key,
+        )
+        disposition = "failed"
+        try:
+            result = method(application, document)
+            turn_observability.record_route(result[1])
+        except Exception:
+            raise
+        else:
+            disposition = "completed"
+            return result
+        finally:
+            trace = turn_observability.finish_turn(
+                token, final_disposition=disposition
+            )
+            store = getattr(application.conversation_memory, "store", None)
+            if trace is not None and isinstance(store, memory_store.MemoryStore):
+                try:
+                    store.write_agent_turn_trace(trace)
+                except memory_store.MemoryStoreError:
+                    pass
+
+    return wrapped
 
 
 class SkillApplication:
@@ -605,17 +683,34 @@ class SkillApplication:
         self,
         config: GatewayConfig,
         *,
-        answerer: Callable[[str, dict[str, Any], list[dict[str, str]]], str] = fast_model_answer,
+        answerer: Callable[[str, dict[str, Any], list[dict[str, str]]], str] = natural_voice_answer,
         context: dict[str, Any] | None = None,
         sessions: SessionStore | None = None,
         claim_writer: Callable[[str, str | None], None] = write_provisioning_claim,
+        conversation_memory: context_builder.ConversationMemory | None = None,
+        model_health_probe: Callable[[], None] = warm_voice_model,
+        ha_health_probe: Callable[[], None] = synthetic_ha_read,
     ) -> None:
         self.config = config
         self.answerer = answerer
         self.claim_writer = claim_writer
+        self.conversation_memory = conversation_memory
+        memory_backend = (
+            getattr(conversation_memory, "store", None)
+            if conversation_memory is not None
+            else None
+        )
+        self.deferred = (
+            DeferredTurnManager(memory_backend)
+            if isinstance(memory_backend, memory_store.MemoryStore)
+            else None
+        )
+        self.model_health_probe = model_health_probe
+        self.ha_health_probe = ha_health_probe
         self._stop = threading.Event()
         self._model_ready = threading.Event()
         self._readiness_thread: threading.Thread | None = None
+        self.sessions = SessionStore() if sessions is None else sessions
         if context is None and not config.pending:
             # Bind the webhook immediately. Model warm-up and HA context loading are
             # deliberately asynchronous so Alice never receives a connection error
@@ -631,19 +726,17 @@ class SkillApplication:
             self.context = {} if context is None else context
             if not config.pending:
                 self._model_ready.set()
-        self.sessions = SessionStore() if sessions is None else sessions
-
     def _prepare_runtime(self) -> None:
         while not self._stop.is_set():
             try:
                 warm_voice_model()
                 context = owner_chat.startup_context()
-            except Exception as error:  # keep the lightweight webhook alive
+            except Exception:  # keep the lightweight webhook alive
                 print(
                     json.dumps(
                         {
                             "component": "alice_skill_gateway",
-                            "error_code": safe_failure_code(error),
+                            "error_code": "model_probe_failed",
                             "event": "model_not_ready",
                         },
                         separators=(",", ":"),
@@ -655,17 +748,40 @@ class SkillApplication:
                 continue
             self.context = context
             self._model_ready.set()
+            self.resume_deferred_turns()
             print(
                 '{"component":"alice_skill_gateway","event":"model_ready"}',
                 flush=True,
             )
             return
 
+    def resume_deferred_turns(self) -> None:
+        """Resume only read-only/conversational work left active by a restart."""
+
+        if self.deferred is None:
+            return
+        self.deferred.resume(self)
+
+    def defer_turn(
+        self,
+        document: dict[str, Any],
+        route: str,
+        future: concurrent.futures.Future[tuple[dict[str, Any], str]],
+    ) -> str | None:
+        if self.deferred is None:
+            return None
+        try:
+            turn = validate_request(document, self.config)
+            return self.deferred.track(turn.utterance, route, future)
+        except (GatewayError, memory_store.MemoryStoreError):
+            return None
+
     def close(self) -> None:
         self._stop.set()
         if self._readiness_thread is not None:
             self._readiness_thread.join(timeout=1.0)
 
+    @_trace_skill_process
     def process(self, document: dict[str, Any]) -> tuple[dict[str, Any], str]:
         turn = validate_request(document, self.config)
         if self.config.pending:
@@ -676,6 +792,13 @@ class SkillApplication:
                 ),
                 "provisioning",
             )
+        if turn.utterance == HEALTH_MODEL_COMMAND:
+            if not self._model_ready.is_set():
+                raise GatewayError("voice model readiness is not established")
+            return skill_response(HEALTH_MODEL_TEXT), "health_model"
+        if turn.utterance == HEALTH_HA_READ_COMMAND:
+            self.ha_health_probe()
+            return skill_response(HEALTH_HA_READ_TEXT), "health_ha_read"
         record = self.sessions.get(turn.session_id, turn.is_new)
         with record.lock:
             if turn.message_id == record.last_message_id and record.last_response is not None:
@@ -684,7 +807,23 @@ class SkillApplication:
                 raise GatewayError("out-of-order message")
 
             normalized = turn.utterance.casefold()
-            if normalized in PING_PHRASES:
+            is_status_request = DEFERRED_STATUS_RE.search(
+                " ".join(turn.utterance.split())
+            ) is not None
+            pending_notice = (
+                self.deferred.take_pending_result()
+                if self.deferred is not None and not is_status_request
+                else None
+            )
+            deferred_status = (
+                self.deferred.status_response(turn.utterance)
+                if self.deferred is not None
+                else None
+            )
+            if deferred_status is not None:
+                response = skill_response(deferred_status)
+                route = "deferred_status"
+            elif normalized in PING_PHRASES:
                 response = skill_response("Дворецкий на связи.")
                 route = "ping"
             elif normalized in EXIT_PHRASES:
@@ -705,14 +844,61 @@ class SkillApplication:
                 )
                 route = "model_starting"
             else:
-                answer = self.answerer(turn.utterance, self.context, list(record.history))
+                answer_context = dict(self.context)
+                answer_context["transport"] = "alice"
+                answer_history = list(record.history)
+                memory_session = context_builder.session_fingerprint(turn.session_id)
+                if self.conversation_memory is not None:
+                    try:
+                        bundle = self.conversation_memory.prepare(
+                            owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                            transport="alice",
+                            session_key=memory_session,
+                            current_turn=turn.utterance,
+                            fallback_history=answer_history,
+                        )
+                        answer_context["memory"] = bundle.memory_context
+                        answer_history = bundle.history
+                        turn_observability.observe_memory_context(bundle.memory_context)
+                    except (
+                        memory_store.MemoryStoreError,
+                        context_builder.ContextBuilderError,
+                    ):
+                        pass
+                answer = self.answerer(turn.utterance, answer_context, answer_history)
                 speech = compact_model_speech(answer)
                 response = skill_response(speech)
+                if self.conversation_memory is not None:
+                    try:
+                        self.conversation_memory.record_exchange(
+                            owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                            transport="alice",
+                            session_key=memory_session,
+                            user_text=turn.utterance,
+                            assistant_text=speech,
+                        )
+                    except memory_store.MemoryStoreError:
+                        pass
                 record.history.extend(
                     [_history_item("user", turn.utterance), _history_item("assistant", speech)]
                 )
                 record.history = record.history[-MAX_HISTORY_MESSAGES:]
                 route = owner_chat.classify_request(turn.utterance)
+
+            if pending_notice is not None:
+                current = response.get("response")
+                current_text = (
+                    current.get("text") if isinstance(current, dict) else ""
+                )
+                end_session = bool(
+                    current.get("end_session", False)
+                    if isinstance(current, dict)
+                    else False
+                )
+                response = skill_response(
+                    compact_model_speech(f"{pending_notice} {current_text}"),
+                    end_session=end_session,
+                )
 
             record.last_message_id = turn.message_id
             record.last_response = response
@@ -720,17 +906,275 @@ class SkillApplication:
             return response, route
 
 
+class DeferredTurnManager:
+    """Durable Alice work backed by the existing ActiveGoal store.
+
+    A timed-out mutating turn is recorded for result lookup but is never replayed
+    after restart.  Only routes known to be conversational or read-only may be
+    resumed.  This preserves the existing action idempotency boundary.
+    """
+
+    def __init__(self, store: memory_store.MemoryStore) -> None:
+        self.store = store
+        self._resuming: set[str] = set()
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _canonical(utterance: str, route: str) -> str:
+        normalized = " ".join(utterance.casefold().split())
+        fingerprint = hashlib.blake2s(
+            f"{route}\0{normalized}".encode("utf-8"), digest_size=12
+        ).hexdigest()
+        policy = "resume" if route in DEFERRED_RESUMABLE_ROUTES else "no-replay"
+        return f"{DEFERRED_INTENT_PREFIX}{policy}:{route}:{fingerprint}"
+
+    @staticmethod
+    def _short_id(goal_id: str) -> str:
+        return goal_id[:8]
+
+    def track(
+        self,
+        utterance: str,
+        route: str,
+        future: concurrent.futures.Future[tuple[dict[str, Any], str]],
+    ) -> str:
+        canonical = self._canonical(utterance, route)
+        goal = self.store.start_goal(
+            owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+            transport="alice",
+            original_request=utterance,
+            canonical_intent=canonical,
+            next_step=(
+                "Дождаться результата уже начатой проверки."
+                if route in DEFERRED_RESUMABLE_ROUTES
+                else "Не повторять изменяющее действие; сохранить только его фактический результат."
+            ),
+        )
+        goal_id = str(goal["goal_id"])
+        future.add_done_callback(
+            lambda completed, tracked_goal=goal_id: self._store_future_result(
+                tracked_goal, completed
+            )
+        )
+        return self._short_id(goal_id)
+
+    def _store_future_result(
+        self,
+        goal_id: str,
+        future: concurrent.futures.Future[tuple[dict[str, Any], str]],
+    ) -> None:
+        try:
+            response, _route = future.result()
+            response_block = response.get("response")
+            result = (
+                response_block.get("text")
+                if isinstance(response_block, dict)
+                else None
+            )
+            if not isinstance(result, str) or not result.strip():
+                raise GatewayError("deferred result is empty")
+            self.store.update_goal(
+                goal_id,
+                owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                status="completed",
+                completed_steps=["Запрос выполнен локальным worker."],
+                next_step="Сообщить сохранённый результат владельцу.",
+                result=result[:4_000],
+                delivery_state="pending",
+            )
+        except (BaseException, memory_store.MemoryStoreError):
+            try:
+                self.store.update_goal(
+                    goal_id,
+                    owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                    status="blocked",
+                    completed_steps=["Фоновое выполнение завершилось без проверяемого результата."],
+                    next_step="Владелец может повторить только безопасный запрос.",
+                    blocker="deferred_worker_failed",
+                    result="Задача не завершилась; изменяющее действие автоматически не повторялось.",
+                    delivery_state="pending",
+                )
+            except memory_store.MemoryStoreError:
+                pass
+
+    def resume(self, application: SkillApplication) -> None:
+        try:
+            goals = self.store.goals_by_intent_prefix(
+                memory_store.PRIMARY_OWNER_SCOPE,
+                DEFERRED_INTENT_PREFIX,
+                statuses=("active",),
+                limit=MAX_ACTIVE_TURNS,
+            )
+        except memory_store.MemoryStoreError:
+            return
+        for goal in goals:
+            goal_id = str(goal["goal_id"])
+            parts = str(goal["canonical_intent"]).split(":", 3)
+            policy = parts[1] if len(parts) == 4 else "no-replay"
+            route = parts[2] if len(parts) == 4 else "unknown"
+            if policy != "resume" or route not in DEFERRED_RESUMABLE_ROUTES:
+                try:
+                    self.store.update_goal(
+                        goal_id,
+                        owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                        status="blocked",
+                        completed_steps=["Перезапуск обнаружен до получения результата."],
+                        next_step="Проверить текущее состояние отдельным запросом.",
+                        blocker="mutating_turn_not_replayed",
+                        result="Результат неизвестен; команда после перезапуска не повторялась.",
+                        delivery_state="pending",
+                    )
+                except memory_store.MemoryStoreError:
+                    pass
+                continue
+            if owner_chat.classify_request(str(goal["original_request"])) != route:
+                continue
+            with self._lock:
+                if goal_id in self._resuming:
+                    continue
+                self._resuming.add(goal_id)
+            thread = threading.Thread(
+                target=self._resume_one,
+                args=(application, goal),
+                name=f"alice-deferred-{self._short_id(goal_id)}",
+                daemon=True,
+            )
+            thread.start()
+
+    def _resume_one(self, application: SkillApplication, goal: dict[str, Any]) -> None:
+        goal_id = str(goal["goal_id"])
+        request = str(goal["original_request"])
+        route = str(goal["canonical_intent"]).split(":", 3)[2]
+        try:
+            history: list[dict[str, str]] = []
+            context = dict(application.context)
+            context["transport"] = "alice_deferred"
+            if application.conversation_memory is not None:
+                bundle = application.conversation_memory.prepare(
+                    owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                    transport="alice",
+                    session_key=goal_id,
+                    current_turn=request,
+                )
+                context["memory"] = bundle.memory_context
+                history = bundle.history
+            answerer = fast_model_answer if route == "general" else application.answerer
+            answer = compact_model_speech(answerer(request, context, history))
+            self.store.update_goal(
+                goal_id,
+                owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                status="completed",
+                completed_steps=["Задача восстановлена после перезапуска и выполнена."],
+                next_step="Сообщить сохранённый результат владельцу.",
+                result=answer[:4_000],
+                delivery_state="pending",
+            )
+        except (BaseException, memory_store.MemoryStoreError):
+            try:
+                self.store.update_goal(
+                    goal_id,
+                    owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                    status="blocked",
+                    completed_steps=["Попытка безопасного восстановления завершилась ошибкой."],
+                    next_step="Повторить запрос вручную.",
+                    blocker="deferred_resume_failed",
+                    result="Сохранённая задача не завершилась; никаких действий с устройствами не повторялось.",
+                    delivery_state="pending",
+                )
+            except memory_store.MemoryStoreError:
+                pass
+        finally:
+            with self._lock:
+                self._resuming.discard(goal_id)
+
+    def status_response(self, utterance: str) -> str | None:
+        match = DEFERRED_STATUS_RE.search(" ".join(utterance.split()))
+        if match is None:
+            return None
+        requested = match.group(1)
+        try:
+            goals = self.store.goals_by_intent_prefix(
+                memory_store.PRIMARY_OWNER_SCOPE,
+                DEFERRED_INTENT_PREFIX,
+                statuses=("active", "blocked", "completed"),
+                limit=20,
+            )
+            if requested is not None:
+                goals = [
+                    item for item in goals
+                    if str(item["goal_id"]).startswith(requested.casefold())
+                ]
+            if not goals:
+                return "Сохранённая задача с таким номером не найдена."
+            goal = goals[0]
+            short_id = self._short_id(str(goal["goal_id"]))
+            if goal["status"] == "active":
+                return f"Задача {short_id} ещё выполняется. Результат пока не получен."
+            result = str(goal.get("result") or "Проверяемого результата нет.")
+            self.store.update_goal(
+                str(goal["goal_id"]),
+                owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                delivery_state="delivery_unknown",
+            )
+            return f"Задача {short_id}: {result}"
+        except memory_store.MemoryStoreError:
+            return "Хранилище задач сейчас недоступно."
+
+    def take_pending_result(self) -> str | None:
+        """Attach one saved result to the next ordinary Alice turn."""
+
+        try:
+            goals = self.store.goals_by_intent_prefix(
+                memory_store.PRIMARY_OWNER_SCOPE,
+                DEFERRED_INTENT_PREFIX,
+                statuses=("blocked", "completed"),
+                delivery_states=("pending",),
+                limit=1,
+            )
+            if not goals:
+                return None
+            goal = goals[0]
+            short_id = self._short_id(str(goal["goal_id"]))
+            result = str(goal.get("result") or "Проверяемого результата нет.")
+            # The webhook response has no end-to-end speech readback, so this is
+            # intentionally not marked "delivered".  It is removed from the
+            # automatic queue but remains explicitly retrievable by task ID.
+            self.store.update_goal(
+                str(goal["goal_id"]),
+                owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                delivery_state="delivery_unknown",
+            )
+            return f"Результат задачи {short_id}: {result}"
+        except memory_store.MemoryStoreError:
+            return None
+
+
 def session_fingerprint(session_id: str) -> str:
     return hashlib.blake2s(session_id.encode("utf-8"), digest_size=6).hexdigest()
 
 
-def deadline_message(route: str, *, busy: bool = False) -> str:
+def deadline_message(
+    route: str,
+    *,
+    busy: bool = False,
+    task_id: str | None = None,
+) -> str:
     """Return an honest answer before Alice closes its 4.5 second window."""
 
     if busy:
         return (
             "Я на связи, но заканчиваю предыдущий запрос. "
             "Повторите фразу через несколько секунд."
+        )
+    if task_id is not None and route == "home_assistant_control":
+        return (
+            f"Команда ещё проверяется. Задача {task_id} сохранена. "
+            "Не повторяйте действие; спросите статус задачи позже."
+        )
+    if task_id is not None:
+        return (
+            f"Задача {task_id} сохранена и выполняется. "
+            "Спросите статус задачи в следующем обращении."
         )
     if route == "home_assistant_control":
         return (
@@ -803,10 +1247,11 @@ class BoundedTurnExecutor:
             response, route = future.result(timeout=self.timeout_seconds)
             return response, route, "completed"
         except concurrent.futures.TimeoutError:
+            task_id = self.application.defer_turn(document, fallback_route, future)
             return (
-                skill_response(deadline_message(fallback_route)),
+                skill_response(deadline_message(fallback_route, task_id=task_id)),
                 fallback_route,
-                "deferred",
+                "deferred" if task_id is not None else "timeout_unpersisted",
             )
 
     def close(self) -> None:
@@ -969,7 +1414,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"owners={len(config.owner_ids)} rotation_staged={str(config.rotation_staged).lower()}"
             )
             return 0
-        application = SkillApplication(config)
+        try:
+            conversation_memory = context_builder.open_runtime_memory()
+        except memory_store.MemoryStoreError as error:
+            raise GatewayError("persistent memory is unavailable") from error
+        application = SkillApplication(
+            config,
+            conversation_memory=conversation_memory,
+        )
         server = GatewayServer(application)
     except GatewayError:
         print("Alice skill gateway configuration rejected.", file=sys.stderr)

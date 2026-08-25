@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -16,6 +17,22 @@ import windows_gpu_supervisor as supervisor  # noqa: E402
 
 
 class WindowsGpuSupervisorTests(unittest.TestCase):
+    def test_process_lock_rejects_a_second_or_symlinked_supervisor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            lock_path = Path(directory) / "gpu.lock"
+            first = supervisor.acquire_lock(lock_path)
+            try:
+                with self.assertRaises(supervisor.GpuSupervisorAlreadyRunning):
+                    supervisor.acquire_lock(lock_path)
+            finally:
+                supervisor.os.close(first)
+            target = Path(directory) / "target"
+            target.write_text("", encoding="ascii")
+            lock_path.unlink()
+            lock_path.symlink_to(target)
+            with self.assertRaises((OSError, supervisor.GpuSupervisorError)):
+                supervisor.acquire_lock(lock_path)
+
     def test_ready_endpoint_never_launches_another_process(self) -> None:
         with mock.patch.object(supervisor, "validate_binary"), mock.patch.object(
             supervisor, "current_endpoint", return_value=object()
@@ -37,6 +54,10 @@ class WindowsGpuSupervisorTests(unittest.TestCase):
         self.assertEqual(kwargs["env"]["OLLAMA_NO_CLOUD"], "1")
         self.assertEqual(kwargs["env"]["OLLAMA_VULKAN"], "1")
         self.assertEqual(kwargs["env"]["OLLAMA_LLM_LIBRARY"], "vulkan")
+        self.assertEqual(
+            kwargs["env"]["OLLAMA_CONTEXT_LENGTH"],
+            str(supervisor.model_runtime_policy.get_profile("dialogue").context_window),
+        )
 
 
 if __name__ == "__main__":

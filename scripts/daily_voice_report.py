@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Speak one deterministic Home Butler status report every day at 13:00."""
+"""Build and deliver one verified Home Butler status report when scheduled."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def _load_inventory(path: Path = DEFAULT_INVENTORY_PATH) -> dict[str, Any]:
         raise DailyReportError("private inventory is invalid") from error
     if (
         not isinstance(document, dict)
-        or document.get("schema_version") not in {1, 2}
+        or document.get("schema_version") not in {1, 2, 3}
     ):
         raise DailyReportError("private inventory is invalid")
     entities = document.get("entities")
@@ -543,9 +543,26 @@ def already_verified_today(
     )
 
 
-def report_is_delayed(*, now: Callable[[], float] = time.time) -> bool:
-    local = time.localtime(now())
-    return local.tm_hour > 13 or (local.tm_hour == 13 and local.tm_min > 15)
+def report_is_delayed(
+    scheduled_epoch: int | None,
+    *,
+    now: Callable[[], float] = time.time,
+    grace_seconds: int = 15 * 60,
+) -> bool:
+    """Classify lateness relative to the scheduler, never a hardcoded clock."""
+
+    if scheduled_epoch is None:
+        return False
+    if (
+        isinstance(scheduled_epoch, bool)
+        or not isinstance(scheduled_epoch, int)
+        or scheduled_epoch < 0
+        or isinstance(grace_seconds, bool)
+        or not isinstance(grace_seconds, int)
+        or grace_seconds < 0
+    ):
+        raise DailyReportError("daily report schedule is invalid")
+    return int(now()) > scheduled_epoch + grace_seconds
 
 
 def write_status(
@@ -735,12 +752,16 @@ def execute(
 def run(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--scheduled-epoch", type=int)
     arguments = parser.parse_args(argv)
     if arguments.live and already_verified_today():
         print('{"schema_version":1,"ok":true,"status":"already_verified"}')
         return 0
     try:
-        result = execute(live=arguments.live, delayed=report_is_delayed())
+        result = execute(
+            live=arguments.live,
+            delayed=report_is_delayed(arguments.scheduled_epoch),
+        )
         exit_code = 0 if result["ok"] else 4
     except ha_notify.NotifyDeliveryUnknown:
         result = {"schema_version": 1, "ok": False, "status": "delivery_unknown"}

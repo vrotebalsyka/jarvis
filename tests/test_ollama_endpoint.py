@@ -14,6 +14,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from model_runtime_policy import get_profile  # noqa: E402
 from ollama_endpoint import (  # noqa: E402
     ENV_KEY,
     LOCAL_FALLBACK_URL,
@@ -140,8 +141,12 @@ class EndpointConsumerTests(unittest.TestCase):
 
     def test_runtime_consumers_use_the_single_trusted_source(self) -> None:
         config = (PROJECT_DIR / "hermes" / "config.yaml").read_text(encoding="utf-8")
+        dialogue = get_profile("dialogue")
         self.assertEqual(config.count("${HOME_BUTLER_OLLAMA_BASE_URL}/v1"), 2)
-        self.assertEqual(config.count("context_length: 2048"), 3)
+        self.assertEqual(
+            config.count(f"context_length: {dialogue.context_window}"),
+            3,
+        )
         self.assertNotIn("context_length: 64000", config)
 
         collector = (SCRIPTS_DIR / "local-health-check.sh").read_text(encoding="utf-8")

@@ -25,6 +25,22 @@ ANSWERS = [
 
 
 class DialogueQualificationTests(unittest.TestCase):
+    def test_proof_uses_the_explicit_free_dialogue_route(self) -> None:
+        self.assertTrue(all(prompt.startswith("/модель ") for prompt in proof.PROMPTS))
+
+    def test_deferred_alice_task_and_result_are_parsed_without_answer_leakage(self) -> None:
+        self.assertEqual(
+            proof._deferred_task_id("Задача a1b2c3d4 сохранена и выполняется."),
+            "a1b2c3d4",
+        )
+        self.assertEqual(
+            proof._deferred_result("Задача a1b2c3d4: готовый ответ"),
+            "готовый ответ",
+        )
+
+    def test_model_turn_timeout_allows_slow_local_gpu_inference(self) -> None:
+        self.assertGreaterEqual(proof.MODEL_TURN_TIMEOUT_SECONDS, 90)
+
     def test_natural_answers_prove_history_and_no_fake_tool_claim(self) -> None:
         result = proof._validate_answers(ANSWERS)
         self.assertTrue(result["history_verified"])
@@ -40,6 +56,16 @@ class DialogueQualificationTests(unittest.TestCase):
                 proof.DialogueQualificationError
             ):
                 proof._validate_answers(answers)
+
+    def test_semantic_failures_have_secret_free_component_codes(self) -> None:
+        self.assertEqual(
+            proof.SAFE_FAILURE_CODES["public Alice dialogue history proof failed"],
+            "alice_history",
+        )
+        self.assertEqual(
+            proof.SAFE_FAILURE_CODES["local dialogue canned response proof failed"],
+            "local_canned_response",
+        )
 
     def test_failure_codes_never_include_exception_text(self) -> None:
         self.assertEqual(

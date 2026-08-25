@@ -13,6 +13,7 @@ import yaml
 sys.dont_write_bytecode = True
 
 from ollama_endpoint import EndpointConfigError, ENV_PATH, load_ollama_endpoint
+import model_runtime_policy
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -90,10 +91,16 @@ def audit() -> tuple[bool, list[str]]:
     key_statuses = {
         key: key not in env_keys and not bool(os.environ.get(key)) for key in CLOUD_KEYS
     }
+    dialogue = model_runtime_policy.get_profile("dialogue")
     model_ok = (
         model_mapping.get("provider") == "local-ollama"
-        and model_mapping.get("default") == "home-butler"
-        and local_mapping.get("default_model") == "home-butler"
+        and model_mapping.get("default") == dialogue.model
+        and model_mapping.get("context_length") == dialogue.context_window
+        and model_mapping.get("max_tokens") == dialogue.output_limit
+        and local_mapping.get("default_model") == dialogue.model
+        and local_mapping.get("context_length") == dialogue.context_window
+        and local_mapping.get("request_timeout_seconds")
+        == dialogue.request_timeout_seconds
         and local_mapping.get("api") == "${HOME_BUTLER_OLLAMA_BASE_URL}/v1"
     )
     fallback_ok = set(provider_mapping) == {"local-ollama"} and not any(
@@ -103,7 +110,7 @@ def audit() -> tuple[bool, list[str]]:
     lines = [f"{key}: {'absent' if ok else 'present'}" for key, ok in key_statuses.items()]
     lines.extend(
         [
-            f"LOCAL_MODEL: {'home-butler' if model_ok else 'invalid'}",
+            f"LOCAL_MODEL: {dialogue.model if model_ok else 'invalid'}",
             f"OLLAMA_ENDPOINT: {endpoint_text}",
             f"HA_TOKEN: {'configured' if token_configured else 'not configured'}",
             f"CLOUD_FALLBACK: {'absent' if fallback_ok else 'present'}",

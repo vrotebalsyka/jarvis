@@ -428,10 +428,16 @@ class DailyVoiceReportTests(unittest.TestCase):
             )
 
     def test_delayed_report_is_explicitly_marked_after_retry_window(self) -> None:
-        at_deadline = time.mktime((2026, 8, 11, 13, 15, 0, 0, 0, -1))
-        after_deadline = time.mktime((2026, 8, 11, 13, 16, 0, 0, 0, -1))
-        self.assertFalse(report.report_is_delayed(now=lambda: at_deadline))
-        self.assertTrue(report.report_is_delayed(now=lambda: after_deadline))
+        scheduled = int(time.mktime((2026, 8, 11, 11, 40, 0, 0, 0, -1)))
+        at_deadline = scheduled + 15 * 60
+        after_deadline = at_deadline + 60
+        self.assertFalse(
+            report.report_is_delayed(scheduled, now=lambda: at_deadline)
+        )
+        self.assertTrue(
+            report.report_is_delayed(scheduled, now=lambda: after_deadline)
+        )
+        self.assertFalse(report.report_is_delayed(None, now=lambda: after_deadline))
 
         facts = {
             "available_devices": 1,

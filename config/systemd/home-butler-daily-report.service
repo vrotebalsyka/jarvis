@@ -1,6 +1,6 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
-Description=Home Butler daily 13:00 report through Alice station
+Description=Home Butler persistent scheduler compatibility service
 After=network-online.target home-butler-inventory.service
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -12,10 +12,11 @@ Group=homebutler
 WorkingDirectory=/opt/home-butler
 Environment=HOME=/home/homebutler
 Environment=PYTHONDONTWRITEBYTECODE=1
-Environment=HOME_BUTLER_DAILY_REPORT_STATUS=/home/homebutler/.local/state/home-butler/daily-report-status.json
-ExecStart=/usr/bin/python3 /opt/home-butler/scripts/daily_voice_report.py --live
+Environment=HOME_BUTLER_SCHEDULER_DB=/home/homebutler/.local/state/home-butler/scheduler/scheduler.sqlite3
+Environment=HOME_BUTLER_SCHEDULER_STATUS=/home/homebutler/.local/state/home-butler/scheduler/scheduler-status.json
+ExecStart=/usr/bin/python3 /opt/home-butler/scripts/persistent_scheduler.py --tick --live
 LoadCredential=home-assistant.token:/root/Jarvis/home-butler/secrets/home-assistant.token
-TimeoutStartSec=45
+TimeoutStartSec=60
 UMask=0077
 NoNewPrivileges=yes
 CapabilityBoundingSet=
@@ -24,7 +25,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/homebutler/.local/state/home-butler
+ReadWritePaths=/home/homebutler/.local/state/home-butler/scheduler
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

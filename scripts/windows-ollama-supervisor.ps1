@@ -11,6 +11,19 @@ $ollamaRoot = Split-Path -Parent $PSCommandPath
 $ollamaExe = Join-Path $ollamaRoot 'ollama.exe'
 $modelRoot = 'H:\OllamaModels'
 $listenPort = 11434
+$wslExe = Join-Path $env:SystemRoot 'System32\wsl.exe'
+$contextOutput = & $wslExe `
+    -d Ubuntu `
+    -u homebutler `
+    --exec /usr/bin/python3 `
+    /opt/home-butler/scripts/model_runtime_policy.py `
+    --context-window dialogue
+$contextWindow = 0
+if ($LASTEXITCODE -ne 0 -or
+    -not [int]::TryParse(($contextOutput | Select-Object -Last 1), [ref]$contextWindow) -or
+    $contextWindow -lt 8192 -or $contextWindow -gt 65536) {
+    throw 'The canonical model context policy is unavailable.'
+}
 
 function Test-PrivateWslAddress {
     param([Parameter(Mandatory)][string]$Address)
@@ -127,7 +140,7 @@ while ($true) {
     $env:OLLAMA_HOST = "$address`:$listenPort"
     $env:OLLAMA_MODELS = $modelRoot
     $env:OLLAMA_NO_CLOUD = '1'
-    $env:OLLAMA_CONTEXT_LENGTH = '2048'
+    $env:OLLAMA_CONTEXT_LENGTH = [string]$contextWindow
     $env:OLLAMA_FLASH_ATTENTION = '1'
     $env:OLLAMA_KV_CACHE_TYPE = 'q8_0'
     $env:OLLAMA_NUM_PARALLEL = '1'

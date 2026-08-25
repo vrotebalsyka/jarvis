@@ -14,10 +14,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import home_assistant_control as control  # noqa: E402
 import model_ha_proof  # noqa: E402
+import model_runtime_policy  # noqa: E402
 from ollama_endpoint import OllamaEndpoint, load_runtime_ollama_endpoint  # noqa: E402
 
 
-MODEL = "home-butler"
+MODEL = model_runtime_policy.get_profile("structured").model
 TOOL_NAME = "ha_control_entity"
 
 
@@ -49,18 +50,15 @@ def run_control_proof(
     value: object = None,
     *,
     endpoint_loader: Callable[[], OllamaEndpoint] = load_runtime_ollama_endpoint,
-    ollama_call: Callable[[OllamaEndpoint, str, dict[str, Any]], dict[str, Any]] = model_ha_proof.call_ollama,
+    ollama_call: Callable[..., dict[str, Any]] = model_ha_proof.call_ollama,
     control_executor: Callable[..., tuple[dict[str, Any], int]] = control.execute_safely,
 ) -> dict[str, Any]:
     control.validate_request(entity_id, action, value)
     endpoint = endpoint_loader()
-    payload = {
-        "model": MODEL,
-        "stream": False,
-        "think": False,
-        "keep_alive": "24h",
-        "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 96},
-        "messages": [
+    runtime_profile = model_runtime_policy.get_profile("structured")
+    payload = model_runtime_policy.build_chat_payload(
+        "structured",
+        [
             {
                 "role": "system",
                 "content": (
@@ -73,7 +71,7 @@ def run_control_proof(
                 "content": f"Выполни {action} для {entity_id} со значением {value!r}.",
             },
         ],
-        "tools": [
+        tools=[
             {
                 "type": "function",
                 "function": {
@@ -97,8 +95,13 @@ def run_control_proof(
                 },
             }
         ],
-    }
-    response = ollama_call(endpoint, "/api/chat", payload)
+    )
+    response = ollama_call(
+        endpoint,
+        "/api/chat",
+        payload,
+        timeout=runtime_profile.request_timeout_seconds,
+    )
     tool_call = extract_exact_call(response, entity_id, action, value)
     if value is None:
         result, exit_code = control_executor(entity_id, action)

@@ -27,7 +27,7 @@ database:
 model:
   # Default model to use (can be overridden with --model flag)
   # Both "default" and "model" work as the key name here.
-  default: "home-butler"
+  default: "qwen3.5:4b-q4_K_M"
   
   # Inference provider selection:
   #   "auto"         - Auto-detect from credentials (default)
@@ -65,8 +65,8 @@ model:
   # API configuration (falls back to OPENROUTER_API_KEY env var)
   # api_key: "your-key-here"  # Uncomment to set here instead of .env
   base_url: "${HOME_BUTLER_OLLAMA_BASE_URL}/v1"
-  context_length: 2048
-  max_tokens: 384
+  context_length: 32768
+  max_tokens: 1024
 
   # Azure Foundry keyless auth example:
   # provider: "azure-foundry"
@@ -132,14 +132,14 @@ providers:
   local-ollama:
     api: "${HOME_BUTLER_OLLAMA_BASE_URL}/v1"
     transport: "chat_completions"
-    default_model: "home-butler"
-    context_length: 2048
-    request_timeout_seconds: 120
-    stale_timeout_seconds: 120
+    default_model: "qwen3.5:4b-q4_K_M"
+    context_length: 32768
+    request_timeout_seconds: 180
+    stale_timeout_seconds: 180
     discover_models: false
     models:
-      home-butler:
-        context_length: 2048
+      qwen3.5:4b-q4_K_M:
+        context_length: 32768
     extra_body:
       reasoning_effort: "none"
 

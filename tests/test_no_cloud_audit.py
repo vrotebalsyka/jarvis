@@ -21,7 +21,11 @@ class NoCloudAuditTests(unittest.TestCase):
             ok, lines = no_cloud_audit.audit()
         self.assertTrue(ok)
         rendered = "\n".join(lines)
-        self.assertIn("LOCAL_MODEL: home-butler", rendered)
+        self.assertIn(
+            "LOCAL_MODEL: "
+            + no_cloud_audit.model_runtime_policy.get_profile("dialogue").model,
+            rendered,
+        )
         self.assertIn("CLOUD_FALLBACK: absent", rendered)
         self.assertNotIn("eyJ", rendered)
 

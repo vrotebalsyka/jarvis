@@ -14,16 +14,18 @@ sys.dont_write_bytecode = True
 
 from ollama_endpoint import OllamaEndpoint, load_runtime_ollama_endpoint
 import model_ha_proof
+import model_runtime_policy
 
 
-SOURCE_MODEL = "home-butler"
+VOICE_PROFILE = model_runtime_policy.get_profile("voice_fast")
+SOURCE_MODEL = VOICE_PROFILE.model
 VOICE_MODEL = "home-butler-voice"
 DIGEST_RE = re.compile(r"^[a-f0-9]{64}$")
 MAX_CREATE_RESPONSE_BYTES = 4096
 MAX_SHOW_RESPONSE_BYTES = 4 * 1_048_576
 VOICE_PARAMETERS = {
-    "num_ctx": 2048,
-    "num_predict": 64,
+    "num_ctx": VOICE_PROFILE.context_window,
+    "num_predict": VOICE_PROFILE.output_limit,
 }
 
 

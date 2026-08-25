@@ -24,13 +24,14 @@ import home_assistant_control as ha_control  # noqa: E402
 import home_assistant_notify as ha_notify  # noqa: E402
 import home_assistant_read as ha_read  # noqa: E402
 import model_ha_proof  # noqa: E402
+import model_runtime_policy  # noqa: E402
 from ollama_endpoint import (  # noqa: E402
     EndpointConfigError,
     load_runtime_ollama_endpoint,
 )
 
 
-MODEL = "home-butler"
+MODEL = model_runtime_policy.get_profile("diagnostic").model
 MIN_MINUTES = 1
 MAX_MINUTES = 10
 ENTITY_BATCH_SIZE = 96
@@ -534,20 +535,12 @@ def run_all_relays_test(
                 "Сформируй подробный технический анализ.\nUNTRUSTED_HA_DATA:\n"
                 + json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
             )
+            runtime_profile = model_runtime_policy.get_profile("diagnostic")
             response = model_call(
                 endpoint,
                 "/api/generate",
-                {
-                    "model": MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "keep_alive": "24h",
-                    "options": {
-                        "temperature": 0.2,
-                        "num_ctx": 8192,
-                        "num_predict": 384,
-                    },
-                },
+                model_runtime_policy.build_generate_payload("diagnostic", prompt),
+                timeout=runtime_profile.request_timeout_seconds,
             )
             generated = response.get("response")
             if (
@@ -570,7 +563,7 @@ def run_all_relays_test(
 
         process = model_ha_proof.get_ollama(endpoint, "/api/ps")
         try:
-            gpu = model_ha_proof.gpu_evidence(process)
+            gpu = model_ha_proof.gpu_evidence(process, expected_model=MODEL)
             accelerator = "gpu" if gpu["fully_on_gpu"] else "mixed"
         except model_ha_proof.ProofError:
             accelerator = "unknown"
@@ -729,20 +722,12 @@ def run_test(
                 "Сформируй подробный технический анализ.\nUNTRUSTED_HA_DATA:\n"
                 + json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
             )
+            runtime_profile = model_runtime_policy.get_profile("diagnostic")
             response = model_call(
                 endpoint,
                 "/api/generate",
-                {
-                    "model": MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "keep_alive": "24h",
-                    "options": {
-                        "temperature": 0.2,
-                        "num_ctx": 8192,
-                        "num_predict": 384,
-                    },
-                },
+                model_runtime_policy.build_generate_payload("diagnostic", prompt),
+                timeout=runtime_profile.request_timeout_seconds,
             )
             generated = response.get("response")
             if (
@@ -763,7 +748,7 @@ def run_test(
 
         process = model_ha_proof.get_ollama(endpoint, "/api/ps")
         try:
-            gpu = model_ha_proof.gpu_evidence(process)
+            gpu = model_ha_proof.gpu_evidence(process, expected_model=MODEL)
             accelerator = "gpu" if gpu["fully_on_gpu"] else "mixed"
         except model_ha_proof.ProofError:
             accelerator = "unknown"

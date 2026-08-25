@@ -26,6 +26,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import home_assistant_read as ha_read  # noqa: E402
 import incident_monitor  # noqa: E402
+import safe_attribute_sanitizer as attribute_sanitizer  # noqa: E402
 
 
 INVENTORY_NAME = "inventory.json"
@@ -64,10 +65,113 @@ RECOVERY_MODES = {
     "xiaomi_miot": ("permissioned_entry_reload", False),
     "tuya": ("cloud_backoff", False),
 }
+INVENTORY_SCHEMA_VERSION = 3
+SAFE_SEMANTIC_ATTRIBUTES = frozenset({
+    "device_class",
+    "unit_of_measurement",
+    "state_class",
+    "supported_features",
+    "options",
+    "min",
+    "max",
+    "step",
+    "mode",
+    "percentage",
+    "battery_level",
+    "entity_category",
+})
+CONTROL_DOMAINS = frozenset({
+    "alarm_control_panel", "button", "climate", "cover", "fan", "humidifier",
+    "light", "lock", "number", "select", "switch", "vacuum", "valve",
+    "water_heater",
+})
+MEASUREMENT_DEVICE_CLASSES = frozenset({
+    "apparent_power", "aqi", "atmospheric_pressure", "battery", "carbon_dioxide",
+    "carbon_monoxide", "current", "data_rate", "distance", "duration", "energy",
+    "energy_storage", "frequency", "gas", "humidity", "illuminance", "moisture",
+    "monetary", "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone",
+    "pm1", "pm10", "pm25", "power", "power_factor", "precipitation",
+    "precipitation_intensity", "pressure", "reactive_energy", "reactive_power",
+    "signal_strength", "sound_pressure", "speed", "sulphur_dioxide", "temperature",
+    "volatile_organic_compounds", "volatile_organic_compounds_parts", "voltage",
+    "volume", "volume_flow_rate", "volume_storage", "water", "weight", "wind_speed",
+})
+DIAGNOSTIC_DEVICE_CLASSES = frozenset({
+    "battery", "battery_charging", "connectivity", "problem", "safety", "tamper",
+})
 
 
 class InventoryError(RuntimeError):
     """Secret-free inventory failure."""
+
+
+def _safe_registry_text(value: Any, *, maximum: int = 160) -> str | None:
+    if not isinstance(value, str) or len(value) > maximum:
+        return None
+    try:
+        tagged = attribute_sanitizer.sanitize_value(value)
+    except attribute_sanitizer.AttributeSanitizerError:
+        return None
+    return attribute_sanitizer.untrusted_text(tagged)
+
+
+def _safe_aliases(value: Any) -> list[str]:
+    if not isinstance(value, list) or len(value) > 32:
+        return []
+    result: list[str] = []
+    for item in value:
+        safe = _safe_registry_text(item, maximum=100)
+        if safe is not None:
+            result.append(safe)
+    return list(dict.fromkeys(result))[:16]
+
+
+def _semantic_role(entity_id: str, attributes: dict[str, Any]) -> str:
+    domain = entity_id.split(".", 1)[0]
+    device_class = attribute_sanitizer.untrusted_text(
+        attributes.get("device_class")
+    )
+    entity_category = attribute_sanitizer.untrusted_text(
+        attributes.get("entity_category")
+    )
+    if entity_category == "diagnostic":
+        return "diagnostic"
+    if domain == "update":
+        return "maintenance"
+    if domain == "device_tracker" or device_class == "connectivity":
+        return "connectivity"
+    if device_class in DIAGNOSTIC_DEVICE_CLASSES and domain == "binary_sensor":
+        return "diagnostic"
+    if domain == "sensor" or device_class in MEASUREMENT_DEVICE_CLASSES:
+        return "measurement"
+    if domain in CONTROL_DOMAINS:
+        return "control"
+    if domain in {"binary_sensor", "event"}:
+        return "state"
+    return "state"
+
+
+def _entity_capability(entity_id: str, attributes: dict[str, Any]) -> str:
+    domain = entity_id.split(".", 1)[0]
+    if domain == "button":
+        return "press"
+    if domain in {"number", "select"}:
+        return "set_value"
+    if domain in CONTROL_DOMAINS:
+        return "control"
+    if domain == "update":
+        return "observe_update"
+    if _semantic_role(entity_id, attributes) == "measurement":
+        return "measure"
+    return "observe"
+
+
+def _availability(state_kind: object) -> str:
+    if state_kind in {"unavailable", "absent"}:
+        return "unavailable"
+    if state_kind == "redacted":
+        return "redacted"
+    return "available"
 
 
 def _version_tuple(value: Any) -> tuple[int, int, int] | None:
@@ -499,7 +603,9 @@ def _physical_devices(
     entities: list[dict[str, object]],
     entries: dict[str, dict[str, object]],
     network_bindings: list[dict[str, object]],
+    device_metadata: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
+    metadata = device_metadata or {}
     network_by_hash = {
         str(item["physical_device_hash"]): item for item in network_bindings
     }
@@ -524,10 +630,52 @@ def _physical_devices(
         })
         kinds = [str(item.get("state_kind", "absent")) for item in members]
         network = network_by_hash.get(physical_hash)
+        device_ids = sorted({
+            str(item["device_id"])
+            for item in members
+            if isinstance(item.get("device_id"), str)
+        })
+        metadata_items = [metadata[item] for item in device_ids if item in metadata]
+        device_names = sorted({
+            str(item["display_name"])
+            for item in metadata_items
+            if isinstance(item.get("display_name"), str)
+        })
+        area_names = sorted({
+            str(item["area_name"])
+            for item in metadata_items
+            if isinstance(item.get("area_name"), str)
+        })
+        area_aliases = sorted({
+            str(alias)
+            for item in metadata_items
+            for alias in item.get("area_aliases", [])
+            if isinstance(alias, str)
+        })
+        manufacturers = sorted({
+            str(item["manufacturer"])
+            for item in metadata_items
+            if isinstance(item.get("manufacturer"), str)
+        })
+        models = sorted({
+            str(item["model"])
+            for item in metadata_items
+            if isinstance(item.get("model"), str)
+        })
+        software_versions = sorted({
+            str(item["software_version"])
+            for item in metadata_items
+            if isinstance(item.get("software_version"), str)
+        })
         result.append(
             {
                 "physical_device_hash": physical_hash,
-                "display_name": _common_display_name(members),
+                "display_name": device_names[0] if device_names else _common_display_name(members),
+                "area_names": area_names,
+                "area_aliases": area_aliases,
+                "manufacturers": manufacturers,
+                "models": models,
+                "software_versions": software_versions,
                 "entity_ids": entity_ids,
                 "entity_count": len(entity_ids),
                 "available_entity_count": sum(
@@ -540,6 +688,12 @@ def _physical_devices(
                 "platforms": sorted(platforms),
                 "config_entry_ids": entry_ids,
                 "config_domains": config_domains,
+                "semantic_roles": sorted({
+                    str(item.get("semantic_role", "state")) for item in members
+                }),
+                "capabilities": sorted({
+                    str(item.get("capability", "observe")) for item in members
+                }),
                 "safety_class": _device_safety_class(entity_ids, platforms),
                 "network_status": (
                     str(network["status"]) if network is not None else "unknown"
@@ -738,6 +892,80 @@ def _read_core_config(
                 connection.close()
             except (OSError, http.client.HTTPException):
                 pass
+
+
+def _probe_official_mcp(
+    config: ha_read.AdapterConfig,
+    *,
+    connection_factory: Callable[[ha_read.AdapterConfig], http.client.HTTPConnection] = ha_read._default_connection,
+) -> str:
+    """Probe only endpoint existence; never send a model request or retain a body."""
+    connection: http.client.HTTPConnection | None = None
+    try:
+        connection = connection_factory(config)
+        connection.request(
+            "GET",
+            "/api/mcp",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {config.token}",
+                "Connection": "close",
+            },
+        )
+        response = connection.getresponse()
+        response.read(1_025)
+        if response.status == 404:
+            return "unavailable"
+        if response.status in {200, 400, 405, 406, 415}:
+            return "available"
+        return "not_verified"
+    except (OSError, socket.timeout, TimeoutError, http.client.HTTPException):
+        return "not_verified"
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except (OSError, http.client.HTTPException):
+                pass
+
+
+def _official_ha_capabilities(
+    core_config: Any,
+    entries: dict[str, dict[str, object]],
+    area_profiles: dict[str, dict[str, object]],
+    entities: list[dict[str, object]],
+    mcp_status: str,
+) -> dict[str, object]:
+    domains = {str(item.get("domain")) for item in entries.values()}
+    alias_count = sum(
+        len(item.get("entity_aliases", []))
+        for item in entities
+        if isinstance(item.get("entity_aliases"), list)
+    )
+    area_alias_count = sum(
+        len(item.get("aliases", []))
+        for item in area_profiles.values()
+        if isinstance(item.get("aliases"), list)
+    )
+    version = core_config.get("version") if isinstance(core_config, dict) else None
+    assist_detected = "assist_pipeline" in domains or "conversation" in domains
+    return {
+        "core_version": version if _version_tuple(version) is not None else None,
+        "api_mcp": mcp_status,
+        "assist_pipeline": "present" if "assist_pipeline" in domains else "not_detected",
+        "conversation_integration": "present" if "conversation" in domains else "not_detected",
+        "assist_llm_api": "integration_detected" if assist_detected else "not_verified",
+        "get_live_context": "not_verified",
+        "area_alias_count": area_alias_count,
+        "entity_alias_count": alias_count,
+        "alias_matching": (
+            "registry_aliases_available"
+            if area_alias_count or alias_count
+            else "registry_available_no_aliases_observed"
+        ),
+        "exposed_entity_policy": "not_imported",
+        "inventory_role": "stable_identity_source_of_truth",
+    }
 
 
 def _localtuya_diagnostic_hosts(document: Any) -> dict[str, str]:
@@ -958,6 +1186,7 @@ def collect_inventory(
     raw_state_reader: Callable[[ha_read.AdapterConfig, str], Any] = ha_read.request_json,
     diagnostics_reader: Callable[[ha_read.AdapterConfig, str], Any] = _read_config_entry_diagnostics,
     core_config_reader: Callable[[ha_read.AdapterConfig], Any] = _read_core_config,
+    official_mcp_probe: Callable[[ha_read.AdapterConfig], str] = _probe_official_mcp,
     previous_bindings: Any = None,
     previous_device_network_bindings: Any = None,
 ) -> dict[str, object]:
@@ -968,13 +1197,21 @@ def collect_inventory(
         devices = _command(socket, 11, "config/device_registry/list")
         config_entries = _command(socket, 12, "config_entries/get")
         backup_info = _command(socket, 13, "backup/info")
+        areas = _command(socket, 14, "config/area_registry/list")
+        registry_entities = _command(socket, 15, "config/entity_registry/list")
     finally:
         try:
             socket.close()
         except Exception:
             pass
     display_entities = display.get("entities") if isinstance(display, dict) else None
-    if not isinstance(display_entities, list) or not isinstance(devices, list) or not isinstance(config_entries, list):
+    if (
+        not isinstance(display_entities, list)
+        or not isinstance(devices, list)
+        or not isinstance(config_entries, list)
+        or not isinstance(areas, list)
+        or not isinstance(registry_entities, list)
+    ):
         raise InventoryError("Home Assistant inventory response is invalid")
     snapshot, exit_code = snapshot_reader("snapshot")
     snapshot_entities = snapshot.get("entities") if isinstance(snapshot, dict) else None
@@ -1007,8 +1244,31 @@ def collect_inventory(
             "supports_unload": item.get("supports_unload") is True,
         }
 
+    area_profiles: dict[str, dict[str, object]] = {}
+    for item in areas:
+        if not isinstance(item, dict):
+            raise InventoryError("Home Assistant area registry is invalid")
+        area_id = item.get("area_id") or item.get("id")
+        name = _safe_registry_text(item.get("name"), maximum=100)
+        if isinstance(area_id, str) and 1 <= len(area_id) <= 128 and name is not None:
+            area_profiles[area_id] = {
+                "name": name,
+                "aliases": _safe_aliases(item.get("aliases")),
+            }
+
+    entity_registry_index: dict[str, dict[str, Any]] = {}
+    for item in registry_entities:
+        if not isinstance(item, dict):
+            raise InventoryError("Home Assistant entity registry is invalid")
+        try:
+            entity_id = ha_read._validate_entity_id(item.get("entity_id"))
+        except ha_read.AdapterError:
+            continue
+        entity_registry_index[entity_id] = item
+
     device_entries: dict[str, list[str]] = {}
     device_physical_hashes: dict[str, str] = {}
+    device_metadata: dict[str, dict[str, object]] = {}
     device_macs: dict[str, set[str]] = {}
     identity_devices: dict[str, str] = {}
     xiaomi_identities: dict[str, dict[str, str]] = {}
@@ -1032,6 +1292,19 @@ def collect_inventory(
             device_id, raw_identifiers
         )
         device_macs[device_id] = _device_registry_macs(item.get("connections"))
+        area = area_profiles.get(str(item.get("area_id")), {})
+        display_name = (
+            _safe_registry_text(item.get("name_by_user"), maximum=100)
+            or _safe_registry_text(item.get("name"), maximum=100)
+        )
+        device_metadata[device_id] = {
+            "display_name": display_name,
+            "manufacturer": _safe_registry_text(item.get("manufacturer")),
+            "model": _safe_registry_text(item.get("model")),
+            "software_version": _safe_registry_text(item.get("sw_version")),
+            "area_name": area.get("name"),
+            "area_aliases": list(area.get("aliases", [])),
+        }
         if isinstance(raw_identifiers, list):
             xiaomi_matches: list[tuple[str, str]] = []
             for pair in raw_identifiers:
@@ -1077,20 +1350,52 @@ def collect_inventory(
             continue
         valid_device_id = device_id if isinstance(device_id, str) and DEVICE_ID_RE.fullmatch(device_id) else None
         snapshot_item = snapshot_index.get(normalized_id, {})
+        registry = entity_registry_index.get(normalized_id, {})
+        registry_area = area_profiles.get(str(registry.get("area_id")), {})
+        inherited_area = device_metadata.get(valid_device_id, {}) if valid_device_id else {}
+        linked_entries = device_entries.get(valid_device_id, []) if valid_device_id else []
+        integration_domains = sorted({
+            str(entries[entry_id]["domain"])
+            for entry_id in linked_entries
+            if entry_id in entries
+        }) or [platform]
+        state_kind = snapshot_item.get("state_kind", "absent")
         entities.append(
             {
                 "entity_id": normalized_id,
+                "domain": normalized_id.split(".", 1)[0],
                 "platform": platform,
+                "integration_domains": integration_domains,
                 "device_id": valid_device_id,
                 "physical_device_hash": (
                     device_physical_hashes.get(valid_device_id)
                     if valid_device_id
                     else None
                 ),
-                "config_entry_ids": device_entries.get(valid_device_id, []) if valid_device_id else [],
-                "state_kind": snapshot_item.get("state_kind", "absent"),
+                "config_entry_ids": linked_entries,
+                "entity_aliases": _safe_aliases(registry.get("aliases")),
+                "original_name": _safe_registry_text(registry.get("original_name")),
+                "translation_key": _safe_registry_text(registry.get("translation_key")),
+                "area_name": registry_area.get("name") or inherited_area.get("area_name"),
+                "area_aliases": list(
+                    registry_area.get("aliases")
+                    or inherited_area.get("area_aliases", [])
+                ),
+                "physical_device_name": inherited_area.get("display_name"),
+                "manufacturer": inherited_area.get("manufacturer"),
+                "model": inherited_area.get("model"),
+                "software_version": inherited_area.get("software_version"),
+                "state_kind": state_kind,
+                "state_value": snapshot_item.get("state_value"),
+                "availability": _availability(state_kind),
                 "source_last_updated_at": snapshot_item.get(
                     "source_last_updated_at"
+                ),
+                "semantic_role": "state",
+                "capability": "observe",
+                "diagnostic_relevance": False,
+                "safety_class": _device_safety_class(
+                    [normalized_id], {platform}
                 ),
             }
         )
@@ -1104,10 +1409,43 @@ def collect_inventory(
     for entity in entities:
         raw = raw_state_index.get(entity["entity_id"], {})
         attributes = raw.get("attributes") if isinstance(raw, dict) else None
-        entity["friendly_name"] = ha_read.sanitize_friendly_name(
+        if not isinstance(attributes, dict):
+            attributes = {}
+        friendly_name = ha_read.sanitize_friendly_name(
             attributes.get("friendly_name")
-            if isinstance(attributes, dict) else None
         )
+        entity["friendly_name"] = _safe_registry_text(
+            friendly_name, maximum=100
+        )
+        selected_attributes = {
+            key: attributes[key]
+            for key in SAFE_SEMANTIC_ATTRIBUTES
+            if key in attributes
+        }
+        try:
+            safe_attributes = attribute_sanitizer.sanitize_attributes(
+                selected_attributes,
+                allowed_names=SAFE_SEMANTIC_ATTRIBUTES,
+            )
+        except attribute_sanitizer.AttributeSanitizerError:
+            safe_attributes = {}
+        entity["semantic_attributes"] = safe_attributes
+        entity["semantic_role"] = _semantic_role(
+            str(entity["entity_id"]), safe_attributes
+        )
+        entity["capability"] = _entity_capability(
+            str(entity["entity_id"]), safe_attributes
+        )
+        entity["diagnostic_relevance"] = entity["semantic_role"] in {
+            "diagnostic", "connectivity", "maintenance"
+        }
+        component = (
+            entity.get("translation_key")
+            or entity.get("original_name")
+            or entity.get("friendly_name")
+            or str(entity["entity_id"]).split(".", 1)[1].replace("_", " ")
+        )
+        entity["component"] = component
     network = _network_devices(raw_states)
     device_network_bindings = _build_device_network_bindings(
         device_macs,
@@ -1117,6 +1455,9 @@ def collect_inventory(
         previous_device_network_bindings,
     )
     core_config = core_config_reader(config)
+    official_mcp_status = official_mcp_probe(config)
+    if official_mcp_status not in {"available", "unavailable", "not_verified"}:
+        raise InventoryError("official Home Assistant capability probe is invalid")
     integration_capabilities = _integration_capabilities(raw_states, core_config)
     core_version = integration_capabilities["tuya_local"]["core_version"]
     backup_readiness = _backup_readiness(backup_info, core_version)
@@ -1154,10 +1495,13 @@ def collect_inventory(
         entries, {str(item["platform"]) for item in entities}
     )
     physical_devices = _physical_devices(
-        entities, entries, device_network_bindings
+        entities, entries, device_network_bindings, device_metadata
+    )
+    official_home_assistant = _official_ha_capabilities(
+        core_config, entries, area_profiles, entities, official_mcp_status
     )
     return {
-        "schema_version": 2,
+        "schema_version": INVENTORY_SCHEMA_VERSION,
         "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "entity_count": len(entities),
         "physical_device_count": len(set(device_physical_hashes.values())),
@@ -1169,6 +1513,10 @@ def collect_inventory(
         "integration_capabilities": integration_capabilities,
         "integration_profiles": integration_profiles,
         "backup_readiness": backup_readiness,
+        "official_home_assistant": official_home_assistant,
+        "areas": sorted(
+            area_profiles.values(), key=lambda item: str(item.get("name", ""))
+        ),
         "entities": sorted(entities, key=lambda item: str(item["entity_id"])),
         "config_entries": sorted(entries.values(), key=lambda item: str(item["entry_id"])),
         "network_devices": network,
@@ -1176,6 +1524,105 @@ def collect_inventory(
         "device_network_bindings": device_network_bindings,
         "physical_devices": physical_devices,
     }
+
+
+def migrate_inventory_document(document: object) -> dict[str, Any]:
+    """Upgrade an already-private inventory in memory without inventing facts."""
+    if not isinstance(document, dict):
+        raise InventoryError("inventory migration source is invalid")
+    version = document.get("schema_version")
+    if version == INVENTORY_SCHEMA_VERSION:
+        return document
+    if version not in {1, 2}:
+        raise InventoryError("inventory schema is unsupported")
+    migrated = dict(document)
+    raw_entries = migrated.get("config_entries", [])
+    entries = {
+        str(item.get("entry_id")): str(item.get("domain"))
+        for item in raw_entries
+        if isinstance(item, dict)
+        and isinstance(item.get("entry_id"), str)
+        and isinstance(item.get("domain"), str)
+    } if isinstance(raw_entries, list) else {}
+    raw_entities = migrated.get("entities")
+    if not isinstance(raw_entities, list):
+        raise InventoryError("inventory entities are unavailable")
+    entities: list[dict[str, Any]] = []
+    for raw in raw_entities:
+        if not isinstance(raw, dict):
+            raise InventoryError("inventory entity is invalid")
+        try:
+            entity_id = ha_read._validate_entity_id(raw.get("entity_id"))
+        except ha_read.AdapterError as error:
+            raise InventoryError("inventory entity is invalid") from error
+        item = dict(raw)
+        platform = item.get("platform")
+        if not isinstance(platform, str) or PLATFORM_RE.fullmatch(platform) is None:
+            platform = "runtime"
+        entry_ids = item.get("config_entry_ids", [])
+        entry_id_values = (
+            [value for value in entry_ids if isinstance(value, str)]
+            if isinstance(entry_ids, list)
+            else []
+        )
+        integration_domains = sorted({
+            entries[value]
+            for value in entry_id_values
+            if value in entries
+        }) or [platform]
+        state_kind = item.get("state_kind", "absent")
+        semantic_attributes = item.get("semantic_attributes")
+        if not isinstance(semantic_attributes, dict):
+            semantic_attributes = {}
+        item.update({
+            "domain": entity_id.split(".", 1)[0],
+            "integration_domains": integration_domains,
+            "entity_aliases": [],
+            "original_name": None,
+            "translation_key": None,
+            "area_name": None,
+            "area_aliases": [],
+            "physical_device_name": None,
+            "manufacturer": None,
+            "model": None,
+            "software_version": None,
+            "state_value": item.get("state_value"),
+            "availability": _availability(state_kind),
+            "semantic_attributes": semantic_attributes,
+            "semantic_role": _semantic_role(entity_id, semantic_attributes),
+            "capability": _entity_capability(entity_id, semantic_attributes),
+            "diagnostic_relevance": False,
+            "safety_class": _device_safety_class([entity_id], {platform}),
+            "component": (
+                item.get("friendly_name")
+                or entity_id.split(".", 1)[1].replace("_", " ")
+            ),
+        })
+        item["diagnostic_relevance"] = item["semantic_role"] in {
+            "diagnostic", "connectivity", "maintenance"
+        }
+        entities.append(item)
+    migrated["entities"] = entities
+    migrated["areas"] = []
+    raw_devices = migrated.get("physical_devices", [])
+    if isinstance(raw_devices, list):
+        devices: list[dict[str, Any]] = []
+        for raw in raw_devices:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            item.setdefault("area_names", [])
+            item.setdefault("area_aliases", [])
+            item.setdefault("manufacturers", [])
+            item.setdefault("models", [])
+            item.setdefault("software_versions", [])
+            item.setdefault("semantic_roles", [])
+            item.setdefault("capabilities", [])
+            devices.append(item)
+        migrated["physical_devices"] = devices
+    migrated["schema_version"] = INVENTORY_SCHEMA_VERSION
+    migrated["migrated_from_schema"] = version
+    return migrated
 
 
 def _load_previous_section(

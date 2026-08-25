@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import os
 import stat
@@ -19,6 +20,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import ollama_endpoint  # noqa: E402
+import model_runtime_policy  # noqa: E402
 
 
 OLLAMA_EXE = Path("/mnt/h/Ollama/ollama.exe")
@@ -26,10 +28,68 @@ WINDOWS_MODEL_ROOT = r"H:\OllamaModels"
 PINNED_SHA256 = "82e3b496c059720fa1c40a09af7803778f4bb40f32fb459a1d799c822a217843"
 POLL_SECONDS = 10
 STARTUP_SECONDS = 45
+DEFAULT_CONTEXT_PROFILE = "dialogue"
+LOCK_PATH = Path(
+    os.environ.get(
+        "HOME_BUTLER_GPU_SUPERVISOR_LOCK",
+        "/home/homebutler/.local/state/home-butler/windows-gpu-supervisor.lock",
+    )
+)
 
 
 class GpuSupervisorError(RuntimeError):
     """Fixed, secret-free GPU supervisor failure."""
+
+
+class GpuSupervisorAlreadyRunning(GpuSupervisorError):
+    """Another verified local supervisor already owns the process lock."""
+
+
+def acquire_lock(path: Path = LOCK_PATH) -> int:
+    """Hold one private non-following flock for the supervisor lifetime."""
+    try:
+        parent = path.parent
+        metadata = parent.stat(follow_symlinks=False)
+    except OSError as error:
+        raise GpuSupervisorError("GPU supervisor state directory is unavailable") from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or parent.is_symlink()
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_mode & 0o022
+    ):
+        raise GpuSupervisorError("GPU supervisor state directory is unsafe")
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        lock_metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(lock_metadata.st_mode)
+            or lock_metadata.st_uid != os.geteuid()
+            or lock_metadata.st_nlink != 1
+        ):
+            raise GpuSupervisorError("GPU supervisor lock is unsafe")
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.ftruncate(descriptor, 0)
+        os.write(descriptor, f"{os.getpid()}\n".encode("ascii"))
+        os.fsync(descriptor)
+        return descriptor
+    except BlockingIOError as error:
+        try:
+            os.close(descriptor)
+        except (OSError, UnboundLocalError):
+            pass
+        raise GpuSupervisorAlreadyRunning("GPU supervisor is already running") from error
+    except (OSError, GpuSupervisorError):
+        try:
+            os.close(descriptor)
+        except (OSError, UnboundLocalError):
+            pass
+        raise
 
 
 def validate_binary(path: Path = OLLAMA_EXE) -> None:
@@ -60,6 +120,9 @@ def current_endpoint() -> ollama_endpoint.OllamaEndpoint:
 
 
 def launch(path: Path, endpoint: ollama_endpoint.OllamaEndpoint) -> subprocess.Popen[bytes]:
+    context_window = model_runtime_policy.get_profile(
+        DEFAULT_CONTEXT_PROFILE
+    ).context_window
     environment = {
         **os.environ,
         "OLLAMA_HOST": f"{endpoint.host}:{endpoint.port}",
@@ -67,7 +130,7 @@ def launch(path: Path, endpoint: ollama_endpoint.OllamaEndpoint) -> subprocess.P
         "OLLAMA_NO_CLOUD": "1",
         "OLLAMA_VULKAN": "1",
         "OLLAMA_LLM_LIBRARY": "vulkan",
-        "OLLAMA_CONTEXT_LENGTH": "2048",
+        "OLLAMA_CONTEXT_LENGTH": str(context_window),
         "OLLAMA_FLASH_ATTENTION": "0",
         "OLLAMA_KV_CACHE_TYPE": "q8_0",
         "OLLAMA_NUM_PARALLEL": "1",
@@ -124,11 +187,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
+    descriptor: int | None = None
     try:
+        descriptor = acquire_lock()
         return supervise(once=args.once)
+    except GpuSupervisorAlreadyRunning:
+        print('{"schema_version":1,"status":"gpu_supervisor_already_running"}')
+        return 0
     except GpuSupervisorError as error:
         print(str(error), file=sys.stderr)
         return 3
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ import heartbeat  # noqa: E402
 import home_assistant_read as ha_read  # noqa: E402
 import incident_status  # noqa: E402
 import model_ha_proof  # noqa: E402
+import persistent_scheduler  # noqa: E402
 from ollama_endpoint import (  # noqa: E402
     EndpointConfigError,
     load_runtime_ollama_endpoint,
@@ -34,14 +35,11 @@ from ollama_endpoint import (  # noqa: E402
 STATE_DIR = Path("/home/homebutler/.local/state/home-butler")
 INCIDENT_DB = STATE_DIR / "incidents" / "incidents.sqlite3"
 HEARTBEAT_STATE = STATE_DIR / "heartbeat-state.json"
-DAILY_REPORT_STATE = STATE_DIR / "daily-report-status.json"
 OPERATIONS_STATE = STATE_DIR / "operations-status.json"
 OPERATIONS_JOURNAL = STATE_DIR / "operations-events.jsonl"
 DEVICE_HEALTH_MAX_AGE_SECONDS = 45
 HEARTBEAT_MAX_AGE_SECONDS = 15 * 60
 OPERATIONS_MAX_AGE_SECONDS = 90
-DAILY_REPORT_HOUR = 13
-DAILY_REPORT_RETRY_GRACE_SECONDS = 15 * 60
 MAX_PRIVATE_JSON_BYTES = 65_536
 MAX_OPERATIONS_JOURNAL_BYTES = 4 * 1_048_576
 REQUIRED_UNITS = (
@@ -69,7 +67,7 @@ def _load_private_json(path: Path) -> tuple[dict[str, Any], os.stat_result]:
     except OSError as error:
         raise SupervisorError("private state is unavailable") from error
     expected_owners = {os.geteuid()}
-    if path in {HEARTBEAT_STATE, DAILY_REPORT_STATE, OPERATIONS_STATE}:
+    if path in {HEARTBEAT_STATE, OPERATIONS_STATE}:
         try:
             expected_owners.add(pwd.getpwnam("homebutler").pw_uid)
         except KeyError:
@@ -179,59 +177,45 @@ def read_daily_report(
     now: int | None = None,
     localtime: Callable[[float], time.struct_time] = time.localtime,
 ) -> dict[str, Any]:
+    """Read the one persistent scheduler instead of reconstructing a fixed time."""
+
     observed_now = int(time.time()) if now is None else now
-    local = localtime(observed_now)
-    local_date = time.strftime("%Y-%m-%d", local)
-    due_epoch = int(time.mktime((
-        local.tm_year,
-        local.tm_mon,
-        local.tm_mday,
-        DAILY_REPORT_HOUR,
-        0,
-        0,
-        local.tm_wday,
-        local.tm_yday,
-        local.tm_isdst,
-    )))
-    if observed_now < due_epoch:
-        return {"state": "not_due", "verified": False, "attempts": 0}
+    del localtime  # retained only for public-call compatibility
     try:
-        document, _metadata = _load_private_json(DAILY_REPORT_STATE)
-    except SupervisorError:
-        state = (
-            "retrying"
-            if observed_now <= due_epoch + DAILY_REPORT_RETRY_GRACE_SECONDS
-            else "missed"
-        )
-        return {"state": state, "verified": False, "attempts": 0}
+        document = persistent_scheduler.read_daily_report_status(now=observed_now)
+    except persistent_scheduler.SchedulerError as error:
+        raise SupervisorError("scheduler state is unavailable") from error
+    state = document.get("state")
     attempts = document.get("attempts")
-    attempted_epoch = document.get("attempted_epoch")
+    next_run = document.get("next_run_epoch")
+    last_run = document.get("last_run_epoch")
+    verification = document.get("verification")
     valid = (
-        document.get("schema_version") == 2
-        and document.get("local_date") == local_date
+        state in {"not_due", "running", "retrying", "verified", "missed", "unavailable"}
         and isinstance(attempts, int)
         and not isinstance(attempts, bool)
-        and 1 <= attempts <= 100
-        and isinstance(attempted_epoch, int)
-        and not isinstance(attempted_epoch, bool)
-        and due_epoch <= attempted_epoch <= observed_now + 5
+        and attempts >= 0
+        and (
+            next_run is None
+            or isinstance(next_run, int) and not isinstance(next_run, bool) and next_run >= 0
+        )
+        and (
+            last_run is None
+            or isinstance(last_run, int) and not isinstance(last_run, bool) and last_run >= 0
+        )
+        and isinstance(verification, str)
+        and 1 <= len(verification) <= 128
     )
     if not valid:
-        state = (
-            "retrying"
-            if observed_now <= due_epoch + DAILY_REPORT_RETRY_GRACE_SECONDS
-            else "missed"
-        )
-        return {"state": state, "verified": False, "attempts": 0}
-    verified = document.get("status") == "verified" and document.get("verified") is True
-    if verified:
-        return {"state": "verified", "verified": True, "attempts": attempts}
-    state = (
-        "retrying"
-        if observed_now <= due_epoch + DAILY_REPORT_RETRY_GRACE_SECONDS
-        else "missed"
-    )
-    return {"state": state, "verified": False, "attempts": attempts}
+        raise SupervisorError("scheduler state is invalid")
+    return {
+        "state": state,
+        "verified": state == "verified",
+        "attempts": attempts,
+        "next_run_epoch": next_run,
+        "last_run_epoch": last_run,
+        "verification": verification,
+    }
 
 
 def read_model() -> dict[str, Any]:

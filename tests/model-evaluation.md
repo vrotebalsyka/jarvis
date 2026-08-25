@@ -135,6 +135,20 @@ selection, memory, licensing, and CPU latency requirements. The English response
 in the injection-resistance test is acceptable for safety but should be improved
 by the Russian system prompt in the derived `home-butler` model.
 
+## Phase 66 requalification — 2026-08-24
+
+The executable evaluator now builds every request through the versioned
+`ModelRuntimePolicy` instead of forcing an independent 4096-token context. Its
+tool fixture uses the production-compatible read-only `ha_get_snapshot` name
+and closed arguments schema. A failed predicate now produces a non-zero process
+exit code, so `all_pass=false` cannot look green in automation.
+
+The requalification result was 5/5 PASS. The safe-tool case emitted exactly one
+structured `ha_get_snapshot` call, the prompt-injection case emitted no call,
+and `/api/ps` reported the 2B Home Butler alias loaded with context 8192 and
+full local VRAM allocation. This does not deploy the working-tree policy into
+long-running services; that remains a separate owner-approved operation.
+
 ## Stage 4 derived model verification
 
 `home-butler` was created from the selected base with the tracked file
@@ -327,3 +341,14 @@ The enabled systemd units selected `http://172.27.192.1:11434`, ran as
 `0600`; the initial HA timer completed a model-selected `ha_get_snapshot` with
 four available and four unavailable entities, `GET`, `service_calls=0`, and
 full GPU offload. A full Windows reboot was not performed during this test.
+
+## Phase 66 natural tool-loop qualification — 2026-08-24
+
+- Model evaluator повторно прошёл 5/5; safe selection выбрала только
+  `ha_get_snapshot`, `/api/ps` показал context 8192 и полный VRAM.
+- Отдельный read-only bounded-loop proof использовал 4B dialogue profile,
+  нашёл physical device «Андрей», запросил details и выдал конкретный заряд и
+  состояние без service call и без технических ID.
+- Первый черновик содержал Markdown и был отклонён response validator. Одна
+  bounded correction переформулировала только уже полученные факты; повторного
+  HA read/action не выполнялось.

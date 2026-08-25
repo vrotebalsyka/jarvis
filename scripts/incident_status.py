@@ -102,7 +102,7 @@ def _actionable_platforms(
     capabilities = document.get("integration_capabilities", {})
     identity_bindings = document.get("identity_bindings", [])
     if (
-        document.get("schema_version") not in {1, 2}
+        document.get("schema_version") not in {1, 2, 3}
         or not isinstance(entities, list)
         or not isinstance(config_entries, list)
         or not isinstance(capabilities, dict)

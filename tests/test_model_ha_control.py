@@ -37,10 +37,12 @@ class ModelControlProofTests(unittest.TestCase):
         endpoint = OllamaEndpoint("http://172.27.192.1:11434", "172.27.192.1", 11434)
         calls: list[tuple[str, str]] = []
 
-        def fake_ollama(_endpoint, path, payload):
+        def fake_ollama(_endpoint, path, payload, **kwargs):
             self.assertEqual(path, "/api/chat")
-            self.assertEqual(payload["options"]["num_ctx"], 2048)
-            self.assertEqual(payload["keep_alive"], "24h")
+            runtime = proof.model_runtime_policy.get_profile("structured")
+            self.assertEqual(payload["options"]["num_ctx"], runtime.context_window)
+            self.assertEqual(payload["keep_alive"], runtime.keep_alive)
+            self.assertEqual(kwargs["timeout"], runtime.request_timeout_seconds)
             schema = payload["tools"][0]["function"]["parameters"]
             self.assertEqual(schema["properties"]["entity_id"]["enum"], ["switch.kavidor_switch_1"])
             self.assertEqual(schema["properties"]["action"]["enum"], ["turn_on"])
@@ -86,7 +88,11 @@ class ModelControlProofTests(unittest.TestCase):
         endpoint = OllamaEndpoint("http://172.27.192.1:11434", "172.27.192.1", 11434)
         calls = []
 
-        def fake_ollama(_endpoint, _path, payload):
+        def fake_ollama(_endpoint, _path, payload, **kwargs):
+            self.assertEqual(
+                kwargs["timeout"],
+                proof.model_runtime_policy.get_profile("structured").request_timeout_seconds,
+            )
             schema = payload["tools"][0]["function"]["parameters"]
             self.assertEqual(schema["properties"]["value"]["enum"], [5.0])
             self.assertIn("value", schema["required"])

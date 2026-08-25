@@ -1,10 +1,10 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
-Description=Check the exact private Alice webhook every minute
+Description=Check each private Alice voice component every ten seconds
 
 [Timer]
-OnBootSec=120s
-OnUnitActiveSec=60s
+OnBootSec=30s
+OnUnitActiveSec=10s
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=false

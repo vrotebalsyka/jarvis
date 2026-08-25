@@ -388,7 +388,9 @@ class AnalysisAndRenderingTests(unittest.TestCase):
         ]
         snapshot = core.validate_snapshot(snapshot)
         analysis = core.analyze_snapshot(snapshot)
-        payload = health_report.build_model_payload(snapshot, analysis, "home-butler")
+        payload = health_report.build_model_payload(
+            snapshot, analysis, health_report.STRUCTURED_PROFILE.model
+        )
         report = health_report.render_report(
             snapshot,
             analysis,
@@ -486,9 +488,9 @@ class StructuredOutputContractTests(unittest.TestCase):
         payload = health_report.build_model_payload(
             self.snapshot,
             self.analysis,
-            "home-butler",
+            health_report.STRUCTURED_PROFILE.model,
         )
-        self.assertEqual(payload["model"], "home-butler")
+        self.assertEqual(payload["model"], health_report.STRUCTURED_PROFILE.model)
         self.assertIs(payload["stream"], False)
         self.assertIs(payload["think"], False)
         self.assertEqual(payload["options"]["temperature"], 0)
@@ -608,7 +610,7 @@ class OllamaClientTests(unittest.TestCase):
         self.payload = health_report.build_model_payload(
             self.snapshot,
             self.analysis,
-            "home-butler",
+            health_report.STRUCTURED_PROFILE.model,
         )
 
     def _factory(
@@ -633,13 +635,14 @@ class OllamaClientTests(unittest.TestCase):
         return factory, calls, connections
 
     def test_client_posts_only_to_fixed_private_generate_endpoint(self) -> None:
-        self.assertEqual(self.payload["options"]["num_ctx"], 2048)
-        self.assertEqual(self.payload["keep_alive"], "24h")
+        profile = health_report.STRUCTURED_PROFILE
+        self.assertEqual(self.payload["options"]["num_ctx"], profile.context_window)
+        self.assertEqual(self.payload["keep_alive"], profile.keep_alive)
         inner = valid_model_output(self.analysis)
         factory, calls, connections = self._factory(
             200,
             {
-                "model": "home-butler:latest",
+                "model": health_report.STRUCTURED_PROFILE.model,
                 "done": True,
                 "done_reason": "stop",
                 "response": json.dumps(inner),
@@ -664,12 +667,12 @@ class OllamaClientTests(unittest.TestCase):
     def test_client_rejects_http_incomplete_and_non_json_responses(self) -> None:
         cases: list[tuple[int, dict[str, Any] | bytes]] = [
             (500, b'{"error":"SECRET_SENTINEL"}'),
-            (200, {"model": "home-butler:latest", "done": False, "done_reason": "length", "response": "{}"}),
-            (200, {"model": "home-butler:latest", "done": True, "done_reason": "stop", "response": "prefix {} suffix"}),
+            (200, {"model": health_report.STRUCTURED_PROFILE.model, "done": False, "done_reason": "length", "response": "{}"}),
+            (200, {"model": health_report.STRUCTURED_PROFILE.model, "done": True, "done_reason": "stop", "response": "prefix {} suffix"}),
             (
                 200,
                 {
-                    "model": "home-butler:latest",
+                    "model": health_report.STRUCTURED_PROFILE.model,
                     "done": True,
                     "done_reason": "stop",
                     "response": '{"status":"ok","status":"attention"}',

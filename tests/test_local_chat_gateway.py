@@ -15,6 +15,7 @@ SCRIPTS_DIR = PROJECT_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import local_chat_gateway as gateway  # noqa: E402
+import context_builder  # noqa: E402
 
 
 class LocalChatGatewayTests(unittest.TestCase):
@@ -50,6 +51,46 @@ class LocalChatGatewayTests(unittest.TestCase):
         self.assertEqual(app.answer(session_id, "продолжи"), "Второй ответ")
         self.assertEqual(calls[1][1][-2]["content"], "первый")
         self.assertEqual(calls[1][1][-1]["content"], "Первый ответ")
+
+    def test_application_uses_persistent_context_and_records_completed_exchange(self) -> None:
+        class Memory:
+            def __init__(self) -> None:
+                self.prepared = []
+                self.recorded = []
+
+            def prepare(self, **kwargs):
+                self.prepared.append(kwargs)
+                return context_builder.ContextBundle(
+                    [{"role": "user", "content": "сохранённая реплика"}],
+                    {"active_goals": [{"goal_id": "goal"}]},
+                    "trace",
+                )
+
+            def record_exchange(self, **kwargs):
+                self.recorded.append(kwargs)
+
+        memory = Memory()
+        observed = {}
+
+        def answer(_question, context, history):
+            observed["context"] = context
+            observed["history"] = history
+            return "Готово и проверено"
+
+        app = gateway.ChatApplication(
+            answerer=answer,
+            context_factory=lambda: {"trusted": True},
+            conversation_memory=memory,
+        )
+        raw_session = "A" * 43
+        self.assertEqual(app.answer(raw_session, "продолжи задачу"), "Готово и проверено")
+        self.assertEqual(observed["history"][0]["content"], "сохранённая реплика")
+        self.assertEqual(
+            observed["context"]["memory"]["active_goals"][0]["goal_id"],
+            "goal",
+        )
+        self.assertNotEqual(memory.prepared[0]["session_key"], raw_session)
+        self.assertEqual(memory.recorded[0]["assistant_text"], "Готово и проверено")
 
     def test_ui_has_no_external_assets(self) -> None:
         self.assertEqual(gateway.DEFAULT_BIND_HOST, "127.0.0.1")

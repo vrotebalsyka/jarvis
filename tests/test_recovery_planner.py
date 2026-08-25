@@ -81,9 +81,13 @@ class RecoveryPlannerTests(unittest.TestCase):
         )
         captured: list[dict[str, object]] = []
 
-        def call(_endpoint, path, payload):
+        def call(_endpoint, path, payload, **kwargs):
             captured.append(payload)
             self.assertEqual(path, "/api/chat")
+            self.assertEqual(
+                kwargs["timeout"],
+                planner.model_runtime_policy.get_profile("structured").request_timeout_seconds,
+            )
             return {"message": {"content": json.dumps({
                 "candidate_id": "retry_original_intent_once",
                 "fact_ids": retry["required_fact_ids"],
@@ -100,7 +104,10 @@ class RecoveryPlannerTests(unittest.TestCase):
         self.assertEqual(decision["candidate_id"], "retry_original_intent_once")
         serialized = json.dumps(captured, ensure_ascii=True)
         self.assertIs(captured[0]["think"], False)
-        self.assertEqual(captured[0]["options"]["num_predict"], 128)
+        self.assertEqual(
+            captured[0]["options"]["num_predict"],
+            planner.model_runtime_policy.get_profile("structured").output_limit,
+        )
         self.assertNotIn("light.rele_2_garderob", serialized)
         self.assertNotIn("shell", serialized.split('"content": "')[0])
 
@@ -117,7 +124,7 @@ class RecoveryPlannerTests(unittest.TestCase):
             endpoint_loader=lambda: OllamaEndpoint(
                 "http://127.0.0.1:11434", "127.0.0.1", 11434
             ),
-            ollama_call=lambda *_args: {"message": {"content": json.dumps({
+            ollama_call=lambda *_args, **_kwargs: {"message": {"content": json.dumps({
                 "candidate_id": "run_arbitrary_shell",
                 "fact_ids": ["incident:open"],
             })}},
@@ -181,7 +188,7 @@ class RecoveryPlannerTests(unittest.TestCase):
             endpoint_loader=lambda: OllamaEndpoint(
                 "http://127.0.0.1:11434", "127.0.0.1", 11434
             ),
-            ollama_call=lambda *_args: {"message": {"content": json.dumps({
+            ollama_call=lambda *_args, **_kwargs: {"message": {"content": json.dumps({
                 "candidate_id": "retry_original_intent_once",
                 "fact_ids": ["incident:open"],
             })}},

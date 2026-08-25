@@ -174,6 +174,16 @@ def current_origin(
     return parse_origin(runner(("status", "--json")))
 
 
+def inspect_funnel(
+    runner: Callable[[Sequence[str]], bytes] = _run,
+) -> str:
+    """Read and validate the exact approved Funnel route without changing it."""
+
+    origin = current_origin(runner)
+    validate_funnel_status(runner(("funnel", "status", "--json")), origin)
+    return origin
+
+
 def ensure_funnel(
     runner: Callable[[Sequence[str]], bytes] = _run,
     local_probe: Callable[[], None] = _probe_local_gateway,

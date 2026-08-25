@@ -1,12 +1,10 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
-Description=Speak the Home Butler status report every day at exactly 13:00
+Description=Run the Home Butler persistent scheduler frequently
 
 [Timer]
-OnCalendar=*-*-* 13:00:00 Asia/Yekaterinburg
-OnCalendar=*-*-* 13:05:00 Asia/Yekaterinburg
-OnCalendar=*-*-* 13:10:00 Asia/Yekaterinburg
-OnCalendar=*-*-* 13:15:00 Asia/Yekaterinburg
+OnBootSec=30s
+OnUnitActiveSec=15s
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=true

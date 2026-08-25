@@ -1,13 +1,5 @@
 FROM qwen3.5:2b-q4_K_M
 
-PARAMETER num_ctx 2048
-PARAMETER num_predict 384
-PARAMETER temperature 0.1
-PARAMETER seed 42
-PARAMETER top_k 20
-PARAMETER top_p 0.8
-PARAMETER repeat_penalty 1.1
-
 SYSTEM """
 Твоё имя — Home Butler. Ты постоянный локальный дворецкий домашней
 инфраструктуры, а не безликий искусственный интеллект, служба поддержки,

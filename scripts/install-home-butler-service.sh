@@ -107,6 +107,8 @@ ensure_service_directory "$SERVICE_HOME/.local"
 ensure_service_directory "$SERVICE_HOME/.local/state"
 ensure_service_directory "$SERVICE_HOME/.local/state/home-butler"
 ensure_service_directory "$SERVICE_HOME/.local/state/home-butler/incidents"
+ensure_service_directory "$SERVICE_HOME/.local/state/home-butler/memory"
+ensure_service_directory "$SERVICE_HOME/.local/state/home-butler/scheduler"
 ensure_service_directory "$SERVICE_HOME/.local/share"
 ensure_service_directory "$SERVICE_HOME/.local/share/home-butler"
 ensure_service_directory "$SERVICE_HOME/.local/share/home-butler/model-workspace"
@@ -198,38 +200,59 @@ install_root_file() {
   install -o root -g root -m "$mode" -- "$source" "$target"
 }
 
+managed_runtime_scripts=()
 for executable in \
   run-hermes-gateway.sh local-health-check.sh health_report.py heartbeat.py \
   incident_monitor.py incident_notifier.py home_assistant_notify.py \
   entity_freshness.py device_health.py system_log_diagnostics.py \
   ha_model_study.py ha_full_entity_report.py ha_device_knowledge.py \
+  device_onboarding.py \
   diagnostic_monitor.py \
   windows_gpu_supervisor.py \
   daily_voice_report.py operations_supervisor.py home_stress_test.py incident_timeline.py \
   alice_voice_bridge.py alice_skill_gateway.py alice_skill_health.py \
   alice_claim_finalizer.py alice_tailscale_funnel.py rotate-alice-webhook.py owner_chat.py \
-  yandex_station_reminder.py \
-  model_workspace.py \
+  yandex_station_reminder.py persistent_scheduler.py scheduler_natural.py \
+  windows_wake_sync.py \
+  update-home-butler-lan-forward.sh \
+  model_workspace.py safe_maintenance.py maintenance_worker.py \
+  memory_store.py behavior_preferences.py context_builder.py turn_observability.py \
+  capability_catalog.py bounded_ha_agent.py \
   local_chat_gateway.py \
   startup_self_check.py startup_voice_status.py \
   qualification_status.py \
   dialogue_qualification.py \
   incident_status.py \
-  home_assistant_inventory.py \
-  automation_diagnostics.py recovery_planner.py automation_recovery.py \
+  home_assistant_inventory.py safe_attribute_sanitizer.py \
+  automation_diagnostics.py recovery_planner.py recovery_playbook_registry.py \
+  recovery_playbook_executor.py automation_recovery.py \
   integration_recovery.py \
   home_assistant_recovery.py \
   home_assistant_core_recovery.py \
   out_of_band_recovery.py \
   home_assistant_read.py home_assistant_control.py home_assistant_mcp.py \
   ha_entity_query.py ollama_endpoint.py \
-  model_ha_proof.py model_ha_control.py verify-runtime-policy.py; do
+  model_runtime_policy.py model_ha_proof.py model_ha_control.py verify-runtime-policy.py; do
+  managed_runtime_scripts+=("$executable")
   install_root_file 0755 \
     "$PROJECT_DIR/scripts/$executable" "$RUNTIME_DIR/scripts/$executable"
 done
 install_root_file 0644 \
   "$PROJECT_DIR/scripts/health_report_core.py" \
   "$RUNTIME_DIR/scripts/health_report_core.py"
+managed_runtime_scripts+=("health_report_core.py")
+
+# Runtime code is a closed managed set. Operator backups belong in
+# /var/backups/home-butler, never beside importable/executable production code.
+declare -A managed_runtime_script_names=()
+for runtime_script_name in "${managed_runtime_scripts[@]}"; do
+  managed_runtime_script_names["$runtime_script_name"]=1
+done
+while IFS= read -r -d '' runtime_script_path; do
+  runtime_script_name="$(basename -- "$runtime_script_path")"
+  [[ -n "${managed_runtime_script_names[$runtime_script_name]+managed}" ]] \
+    || fail "Refusing unmanaged runtime script: $runtime_script_path"
+done < <(find "$RUNTIME_DIR/scripts" -maxdepth 1 -type f -print0)
 
 install_root_file 0644 \
   "$PROJECT_DIR/hermes/.env" "$RUNTIME_DIR/hermes/.env"
@@ -338,6 +361,8 @@ install_unit home-butler-inventory.service
 install_unit home-butler-inventory.timer
 install_unit home-butler-ha-device-knowledge.service
 install_unit home-butler-ha-device-knowledge.timer
+install_unit home-butler-device-onboarding.service
+install_unit home-butler-device-onboarding.timer
 install_unit home-butler-recovery.service
 install_unit home-butler-recovery.timer
 install_unit home-butler-automation-diagnostics.service
@@ -445,7 +470,7 @@ systemctl enable --now \
   home-butler-startup-voice-status.timer \
   home-butler-dialogue-qualification.timer \
   home-butler-incident-notifier.timer home-butler-inventory.timer \
-  home-butler-ha-device-knowledge.timer \
+  home-butler-ha-device-knowledge.timer home-butler-device-onboarding.timer \
   home-butler-daily-report.timer home-butler-automation-diagnostics.timer \
   home-butler-operations-supervisor.timer \
   home-butler-system-log-diagnostics.timer home-butler-device-health.timer \
@@ -468,7 +493,7 @@ systemctl is-enabled --quiet \
   home-butler-startup-voice-status.timer \
   home-butler-dialogue-qualification.timer \
   home-butler-incident-notifier.timer home-butler-inventory.timer \
-  home-butler-ha-device-knowledge.timer \
+  home-butler-ha-device-knowledge.timer home-butler-device-onboarding.timer \
   home-butler-daily-report.timer home-butler-automation-diagnostics.timer \
   home-butler-operations-supervisor.timer \
   home-butler-system-log-diagnostics.timer home-butler-device-health.timer \
@@ -491,7 +516,7 @@ systemctl is-active --quiet \
   home-butler.service home-butler-heartbeat.timer home-butler-incident-monitor.service \
   home-butler-startup-voice-status.timer \
   home-butler-incident-notifier.timer home-butler-inventory.timer \
-  home-butler-ha-device-knowledge.timer \
+  home-butler-ha-device-knowledge.timer home-butler-device-onboarding.timer \
   home-butler-daily-report.timer home-butler-automation-diagnostics.timer \
   home-butler-operations-supervisor.timer \
   home-butler-system-log-diagnostics.timer home-butler-device-health.timer \
@@ -510,7 +535,7 @@ systemctl is-active --quiet \
   home-butler.service home-butler-heartbeat.timer home-butler-incident-monitor.service \
   home-butler-startup-voice-status.timer \
   home-butler-incident-notifier.timer home-butler-inventory.timer \
-  home-butler-ha-device-knowledge.timer \
+  home-butler-ha-device-knowledge.timer home-butler-device-onboarding.timer \
   home-butler-daily-report.timer home-butler-automation-diagnostics.timer \
   home-butler-operations-supervisor.timer \
   home-butler-system-log-diagnostics.timer home-butler-device-health.timer \

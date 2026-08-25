@@ -30,14 +30,15 @@ def inventory(*names: tuple[str, str]) -> dict[str, object]:
 
 def shown(*, voice: bool) -> dict[str, object]:
     parameters = (
-        "temperature 0.1\nnum_ctx 2048\nnum_predict 64"
+        f"temperature 0.1\nnum_ctx {alias.VOICE_PROFILE.context_window}"
+        f"\nnum_predict {alias.VOICE_PROFILE.output_limit}"
         if voice
         else "num_ctx 64000\nnum_predict 384"
     )
     return {
         "details": {
             "family": "qwen35",
-            "parent_model": "home-butler:latest" if voice else "qwen3.5:2b-q4_K_M",
+            "parent_model": alias.SOURCE_MODEL if voice else "",
         },
         "model_info": {"general.architecture": "qwen35"},
         "system": "reviewed system",
@@ -56,9 +57,9 @@ class OllamaModelAliasTests(unittest.TestCase):
     def test_missing_profile_is_created_once_and_verified(self) -> None:
         responses = iter(
             [
-                inventory(("home-butler:latest", DIGEST)),
+                inventory((alias.SOURCE_MODEL, DIGEST)),
                 inventory(
-                    ("home-butler:latest", DIGEST),
+                    (alias.SOURCE_MODEL, DIGEST),
                     ("home-butler-voice:latest", OTHER_DIGEST),
                 ),
             ]
@@ -76,12 +77,12 @@ class OllamaModelAliasTests(unittest.TestCase):
                 voice=name == "home-butler-voice"
             ),
         )
-        self.assertEqual(calls, [("home-butler", "home-butler-voice")])
+        self.assertEqual(calls, [(alias.SOURCE_MODEL, "home-butler-voice")])
         self.assertEqual(result["status"], "created")
 
     def test_existing_exact_alias_is_idempotent(self) -> None:
         document = inventory(
-            ("home-butler:latest", DIGEST),
+            (alias.SOURCE_MODEL, DIGEST),
             ("home-butler-voice:latest", OTHER_DIGEST),
         )
         result = alias.ensure_alias(
@@ -96,7 +97,7 @@ class OllamaModelAliasTests(unittest.TestCase):
 
     def test_wrong_profile_and_cpu_endpoint_fail_closed(self) -> None:
         document = inventory(
-            ("home-butler:latest", DIGEST),
+            (alias.SOURCE_MODEL, DIGEST),
             ("home-butler-voice:latest", OTHER_DIGEST),
         )
         with self.assertRaises(alias.AliasError):

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import stat
@@ -60,42 +61,133 @@ def _load_private(path: Path, *, missing: dict[str, Any] | None = None) -> dict[
     return document
 
 
+def _is_available(state: dict[str, Any] | None) -> bool:
+    return isinstance(state, dict) and state.get("state_kind") not in {
+        "unavailable", "redacted", "absent", None,
+    }
+
+
+def _condition_triggered(state: dict[str, Any], condition: dict[str, Any]) -> bool:
+    operator = condition.get("operator")
+    threshold = condition.get("threshold")
+    state_kind = state.get("state_kind")
+    value = state.get("state_value")
+    if operator == "unavailable":
+        return state_kind in {"unavailable", "absent"}
+    if state_kind in {"unavailable", "redacted", "absent"}:
+        return False
+    if operator == "none":
+        return False
+    if operator == "on":
+        return value == "on"
+    if operator == "nonzero":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value != 0
+        )
+    if operator in {"less_or_equal", "greater_or_equal"}:
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not isinstance(threshold, (int, float))
+            or isinstance(threshold, bool)
+        ):
+            return False
+        return value <= threshold if operator == "less_or_equal" else value >= threshold
+    if operator == "nonempty":
+        return isinstance(value, str) and bool(value.strip())
+    raise MonitorError("diagnostic monitoring condition is invalid")
+
+
+def _owner_explanation(profile: dict[str, Any], value: Any) -> str:
+    component = ha_read.sanitize_friendly_name(profile.get("component"))
+    if component is None:
+        component = "отдельный компонент"
+    issue_class = profile.get("issue_class")
+    if issue_class == "error_code":
+        return (
+            f"{component}: код ошибки {value}; точное значение интеграция не передала"
+        )
+    if issue_class == "consumable_level":
+        return f"{component}: осталось {round(float(value))} процентов ресурса"
+    if issue_class == "consumable_shortage":
+        return f"{component}: требуется пополнить расходник"
+    if issue_class == "maintenance":
+        return f"{component}: требуется обслуживание"
+    if issue_class == "connectivity":
+        return f"{component}: интеграция сообщает проблему связи"
+    return f"{component}: устройство сообщает о проблеме"
+
+
 def evaluate(snapshot: dict[str, Any], catalog: dict[str, Any]) -> list[dict[str, Any]]:
     entities = snapshot.get("entities")
-    findings = catalog.get("findings")
-    if not isinstance(entities, list) or not isinstance(findings, list):
+    migrated = ha_model_study.migrate_catalog_document(catalog)
+    profiles = migrated.get("profiles")
+    if not isinstance(entities, list) or not isinstance(profiles, list):
         raise MonitorError("diagnostic input is invalid")
     states = {
         item.get("entity_id"): item
         for item in entities
         if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
     }
+    profiles_by_device: dict[str, list[dict[str, Any]]] = {}
+    for profile in profiles:
+        if isinstance(profile, dict) and isinstance(profile.get("physical_device_id"), str):
+            profiles_by_device.setdefault(str(profile["physical_device_id"]), []).append(profile)
     active: list[dict[str, Any]] = []
-    for finding in findings:
-        if not isinstance(finding, dict):
+    for profile in profiles:
+        if not isinstance(profile, dict):
             raise MonitorError("diagnostic catalog is invalid")
-        entity_id = finding.get("entity_id")
-        condition = finding.get("alert_condition")
-        category = finding.get("category")
+        entity_id = profile.get("entity_id")
+        condition = profile.get("recommended_monitoring_condition")
         state = states.get(entity_id) if isinstance(entity_id, str) else None
-        if not isinstance(state, dict) or state.get("state_kind") == "unavailable":
-            continue
-        value = state.get("state_value")
-        triggered = (
-            condition == "on" and value == "on"
-            or condition == "nonzero" and isinstance(value, (int, float))
-            and not isinstance(value, bool) and value != 0
-            or condition == "at_or_below_10" and isinstance(value, (int, float))
-            and not isinstance(value, bool) and 0 <= value <= 10
-        )
-        if triggered:
+        if not isinstance(state, dict) or not isinstance(condition, dict):
+            raise MonitorError("diagnostic catalog is invalid")
+        if _condition_triggered(state, condition):
+            physical_id = profile.get("physical_device_id")
+            siblings = profiles_by_device.get(str(physical_id), [])
+            sibling_states = [
+                states.get(item.get("entity_id"))
+                for item in siblings
+                if isinstance(item.get("entity_id"), str)
+            ]
+            available_features = sum(_is_available(item) for item in sibling_states)
+            value = state.get("state_value")
+            finding_seed = (
+                f"{profile.get('profile_id')}\0{profile.get('issue_class')}\0{entity_id}"
+            )
+            timestamp = state.get("source_last_updated_at")
             active.append({
+                "finding_id": hashlib.sha256(finding_seed.encode("utf-8")).hexdigest(),
+                "physical_device_id": physical_id,
+                "physical_display_name": profile.get("physical_display_name"),
                 "entity_id": entity_id,
-                "friendly_name": finding.get("friendly_name"),
-                "category": category,
-                "state_value": value,
+                "feature_id": entity_id,
+                "component": profile.get("component"),
+                "issue_class": profile.get("issue_class"),
+                "observed_value": value,
+                "severity": profile.get("severity_policy", "unknown"),
+                "confidence": profile.get("classification_confidence", 0.0),
+                "evidence_refs": [
+                    value for value in (
+                        profile.get("profile_id"), profile.get("metadata_hash"), timestamp
+                    ) if isinstance(value, str)
+                ],
+                "first_observed": timestamp,
+                "last_observed": timestamp,
+                "owner_explanation": _owner_explanation(profile, value),
+                "suggested_playbook_ids": [],
+                "actionability": "observe_only",
+                "resolution_condition": {
+                    "operator": "not_triggered",
+                    "source_condition": condition,
+                },
+                "physical_device_available": available_features > 0,
+                "available_feature_count": available_features,
+                "total_feature_count": len(sibling_states),
             })
-    return sorted(active, key=lambda item: str(item["entity_id"]))
+    return sorted(active, key=lambda item: str(item["finding_id"]))
 
 
 def render_message(alerts: list[dict[str, Any]], *, resolved: bool = False) -> str:
@@ -103,20 +195,18 @@ def render_message(alerts: list[dict[str, Any]], *, resolved: bool = False) -> s
         raise MonitorError("diagnostic alert set is empty")
     parts: list[str] = []
     for alert in alerts[:3]:
-        name = ha_read.sanitize_friendly_name(alert.get("friendly_name"))
+        name = ha_read.sanitize_friendly_name(alert.get("physical_display_name"))
+        component = ha_read.sanitize_friendly_name(alert.get("component"))
         if name is None:
-            name = str(alert["entity_id"]).split(".", 1)[1].replace("_", " ")[:100]
-        category = alert.get("category")
+            name = "Устройство"
+        if component is None:
+            component = "отдельный компонент"
         if resolved:
-            parts.append(f"{name}: проблема устранена")
-        elif category == "remaining_life":
-            parts.append(f"{name}: осталось {round(float(alert['state_value']))} процентов ресурса")
-        elif category == "error_code":
-            parts.append(f"{name}: код ошибки {alert['state_value']}")
-        elif category == "consumable_shortage":
-            parts.append(f"{name}: требуется пополнить расходник")
+            parts.append(f"{name}, {component}: проблема устранена")
+        elif alert.get("physical_device_available") is True:
+            parts.append(f"{name}: сам прибор доступен. {alert.get('owner_explanation')}")
         else:
-            parts.append(f"{name}: устройство сообщает о проблеме")
+            parts.append(f"{name}: {alert.get('owner_explanation')}")
     extra = len(alerts) - len(parts)
     if extra > 0:
         parts.append(f"и ещё {extra}")
@@ -144,8 +234,14 @@ def run_once(
     previous = previous_loader().get("active_alerts", [])
     if not isinstance(previous, list):
         raise MonitorError("diagnostic previous state is invalid")
-    old = {item.get("entity_id"): item for item in previous if isinstance(item, dict)}
-    new = {item["entity_id"]: item for item in current}
+    old = {
+        item.get("finding_id") or item.get("entity_id"): item
+        for item in previous if isinstance(item, dict)
+    }
+    new = {item["finding_id"]: item for item in current}
+    for key in set(old) & set(new):
+        if old[key].get("first_observed") is not None:
+            new[key]["first_observed"] = old[key]["first_observed"]
     detected = [new[key] for key in sorted(set(new) - set(old))]
     resolved = [old[key] for key in sorted(set(old) - set(new))]
     message = render_message(detected) if detected else render_message(resolved, resolved=True) if resolved else None
@@ -160,7 +256,7 @@ def run_once(
             delivery = "delivery_unknown"
         service_calls = 1
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "observed_epoch": int(now()),
         "active_alert_count": len(current),
         "detected_count": len(detected),
@@ -191,15 +287,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             live=args.live,
             catalog_loader=lambda: _load_private(ha_model_study.catalog_path()),
             previous_loader=lambda: _load_private(
-                state_path(), missing={"schema_version": 1, "active_alerts": []}
+                state_path(), missing={"schema_version": 2, "active_alerts": []}
             ),
         )
         write_state(document)
     except (MonitorError, ha_read.AdapterError, ha_notify.NotifyError, OSError):
-        print('{"schema_version":1,"status":"failed"}')
+        print('{"schema_version":2,"status":"failed"}')
         return 3
     print(json.dumps({
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "observed",
         "active_alert_count": document["active_alert_count"],
         "detected_count": document["detected_count"],

@@ -2216,6 +2216,7 @@ class IncidentStore:
         """Roll raw entity incidents into durable physical-device incidents."""
         if observed_epoch < 0:
             raise MonitorError("invalid device incident time")
+        repaired = self._split_announced_reopenings()
         unlinked = self.connection.execute(
             """
             SELECT i.*
@@ -2226,7 +2227,7 @@ class IncidentStore:
             """
         ).fetchall()
         touched: set[int] = set()
-        created = 0
+        created = repaired
         with self.connection:
             for row in unlinked:
                 subject = str(row["subject"])
@@ -2240,6 +2241,13 @@ class IncidentStore:
                         OR (
                           first_observed_epoch<=?
                           AND COALESCE(resolved_epoch,last_observed_epoch)>=?
+                          AND NOT EXISTS (
+                            SELECT 1
+                            FROM device_incident_notifications AS notice
+                            WHERE notice.device_incident_id=device_incidents.id
+                              AND notice.phase='resolved'
+                              AND notice.status IN ('accepted','delivery_unknown')
+                          )
                         )
                       )
                     ORDER BY id DESC LIMIT 1
@@ -2365,6 +2373,162 @@ class IncidentStore:
                     ),
                 )
         return {"created": created, "updated": len(touched), "resolved": resolved}
+
+    def _split_announced_reopenings(self) -> int:
+        """Repair old rollups that reopened after a delivered recovery notice.
+
+        Older runtimes correlated a fresh entity outage back into a recently
+        resolved physical-device incident for up to three minutes.  Correlation
+        is useful before recovery is announced, but after that announcement the
+        next outage is a new owner-visible episode and needs fresh deduplication
+        state.  This repair is idempotent and touches only already-correlated
+        private incident rows.
+        """
+        rows = self.connection.execute(
+            """
+            SELECT d.*,MAX(COALESCE(n.accepted_epoch,n.last_attempt_epoch))
+                       AS recovery_notice_epoch
+            FROM device_incidents AS d
+            JOIN device_incident_notifications AS n
+              ON n.device_incident_id=d.id
+            WHERE d.status IN ('observed','confirmed','escalated')
+              AND n.phase='resolved'
+              AND n.status IN ('accepted','delivery_unknown')
+            GROUP BY d.id
+            ORDER BY d.id
+            """
+        ).fetchall()
+        created = 0
+        priority = {"binary_sensor": 0, "sensor": 1, "light": 2, "switch": 3}
+        with self.connection:
+            for device in rows:
+                split_epoch = int(device["recovery_notice_epoch"])
+                members = self.connection.execute(
+                    """
+                    SELECT i.id,i.subject,i.status,i.first_observed_epoch,
+                           i.last_observed_epoch,i.confirmed_epoch,i.resolved_epoch,
+                           i.severity
+                    FROM device_incident_members AS m
+                    JOIN incidents AS i ON i.id=m.entity_incident_id
+                    WHERE m.device_incident_id=?
+                    ORDER BY i.id
+                    """,
+                    (int(device["id"]),),
+                ).fetchall()
+                earlier = [
+                    item for item in members
+                    if int(item["first_observed_epoch"]) <= split_epoch
+                ]
+                later = [
+                    item for item in members
+                    if int(item["first_observed_epoch"]) > split_epoch
+                ]
+                if (
+                    not earlier
+                    or not later
+                    or any(item["status"] != "resolved" for item in earlier)
+                    or not any(item["status"] != "resolved" for item in later)
+                ):
+                    continue
+
+                def aggregate(
+                    items: list[sqlite3.Row],
+                ) -> tuple[str, str, str, int, int, int | None, int | None, str, str]:
+                    subjects = [str(item["subject"]) for item in items]
+                    open_items = [item for item in items if item["status"] != "resolved"]
+                    if open_items:
+                        if any(item["status"] == "escalated" for item in open_items):
+                            status_value = "escalated"
+                        elif any(item["status"] == "confirmed" for item in open_items):
+                            status_value = "confirmed"
+                        else:
+                            status_value = "observed"
+                        resolved_epoch: int | None = None
+                    else:
+                        status_value = "resolved"
+                        resolved_epoch = max(
+                            int(item["resolved_epoch"]) for item in items
+                        )
+                    confirmations = [
+                        int(item["confirmed_epoch"])
+                        for item in items if item["confirmed_epoch"] is not None
+                    ]
+                    representative = min(
+                        subjects,
+                        key=lambda value: (
+                            priority.get(value.split(".", 1)[0], 9),
+                            len(value),
+                            value,
+                        ),
+                    )
+                    return (
+                        representative,
+                        _device_display_name(subjects),
+                        status_value,
+                        min(int(item["first_observed_epoch"]) for item in items),
+                        max(int(item["last_observed_epoch"]) for item in items),
+                        min(confirmations) if confirmations else None,
+                        resolved_epoch,
+                        "critical" if any(
+                            item["severity"] == "critical" for item in items
+                        ) else "warning",
+                        _device_safety_class(subjects),
+                    )
+
+                old_values = aggregate(earlier)
+                self.connection.execute(
+                    """
+                    UPDATE device_incidents
+                    SET representative_subject=?,display_name=?,status=?,
+                        first_observed_epoch=?,last_observed_epoch=?,
+                        confirmed_epoch=?,resolved_epoch=?,severity=?,
+                        safety_class=?,evidence_json=?
+                    WHERE id=?
+                    """,
+                    (*old_values, _json({
+                        "active_members": 0,
+                        "member_count": len(earlier),
+                        "repair": "announced_reopening_split",
+                    }), int(device["id"])),
+                )
+                new_values = aggregate(later)
+                cursor = self.connection.execute(
+                    """
+                    INSERT INTO device_incidents(
+                        physical_device_hash,representative_subject,display_name,
+                        status,first_observed_epoch,last_observed_epoch,
+                        confirmed_epoch,resolved_epoch,severity,cause_code,
+                        cause_confidence,safety_class,baseline,evidence_json
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?)
+                    """,
+                    (
+                        str(device["physical_device_hash"]),
+                        *new_values[:8],
+                        str(device["cause_code"]),
+                        str(device["cause_confidence"]),
+                        new_values[8],
+                        _json({
+                            "active_members": sum(
+                                item["status"] != "resolved" for item in later
+                            ),
+                            "member_count": len(later),
+                            "repair": "announced_reopening_split",
+                        }),
+                    ),
+                )
+                new_id = int(cursor.lastrowid)
+                self.connection.executemany(
+                    """
+                    UPDATE device_incident_members SET device_incident_id=?
+                    WHERE device_incident_id=? AND entity_incident_id=?
+                    """,
+                    (
+                        (new_id, int(device["id"]), int(item["id"]))
+                        for item in later
+                    ),
+                )
+                created += 1
+        return created
 
     def record_voice_intent(
         self,

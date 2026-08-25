@@ -201,6 +201,128 @@ print(json.dumps({"search": search, "device": device}))
         self.assertNotIn("192.168.1.50", serialized)
         self.assertNotIn("AA:BB:CC:DD:EE:FF", serialized)
 
+    def test_semantic_device_tools_keep_feature_failure_separate_from_device(self) -> None:
+        code = r'''
+import json
+import sys
+sys.path.insert(0, "scripts")
+import home_assistant_mcp as boundary
+physical = "b" * 64
+snapshot = {"entities": [
+    {"entity_id": "vacuum.helper", "state_kind": "enum", "state_value": "docked", "source_last_updated_at": "2026-08-23T10:00:00+00:00"},
+    {"entity_id": "sensor.helper_filter", "state_kind": "unavailable", "state_value": None, "source_last_updated_at": "2026-08-23T10:01:00+00:00"},
+]}
+inventory = {
+    "schema_version": 3,
+    "observed_at": "2026-08-23T10:01:00+00:00",
+    "areas": [{"name": "Кухня", "aliases": ["кухонная зона"]}],
+    "entities": [
+        {
+            "entity_id": "vacuum.helper", "domain": "vacuum", "platform": "demo",
+            "integration_domains": ["demo"], "physical_device_hash": physical,
+            "friendly_name": "Андрей", "entity_aliases": ["обхаркиватель"],
+            "area_name": "Кухня", "area_aliases": ["кухонная зона"],
+            "component": "main", "semantic_role": "control", "capability": "control",
+            "diagnostic_relevance": False, "safety_class": "restricted",
+            "state_kind": "enum", "state_value": "docked", "semantic_attributes": {},
+        },
+        {
+            "entity_id": "sensor.helper_filter", "domain": "sensor", "platform": "demo",
+            "integration_domains": ["demo"], "physical_device_hash": physical,
+            "friendly_name": "Остаток фильтра", "entity_aliases": [],
+            "area_name": "Кухня", "area_aliases": [], "component": "filter life",
+            "semantic_role": "diagnostic", "capability": "measure",
+            "diagnostic_relevance": True, "safety_class": "sensor",
+            "state_kind": "unavailable", "state_value": None,
+            "semantic_attributes": {"unit_of_measurement": {"text": "%", "trust": "untrusted_data"}},
+        },
+    ],
+    "physical_devices": [{
+        "physical_device_hash": physical, "display_name": "Андрей",
+        "entity_ids": ["vacuum.helper", "sensor.helper_filter"],
+        "available_entity_count": 1, "unavailable_entity_count": 1,
+        "area_names": ["Кухня"], "manufacturers": ["Example"], "models": ["R1"],
+        "software_versions": ["1.0"], "config_domains": ["demo"],
+        "safety_class": "restricted", "network_status": "stable",
+        "capabilities": ["control", "measure"],
+    }],
+}
+found = boundary.find_model_devices(inventory, query="обхаркиватель")
+details = boundary.get_model_device_details(snapshot, inventory, physical)
+diagnostics = boundary.get_model_device_diagnostics(snapshot, inventory, physical)
+index = boundary.get_model_index(inventory, {"open_count": 1, "confirmed_count": 1, "actionable_count": 0})
+print(json.dumps({"found": found, "details": details, "diagnostics": diagnostics, "index": index}))
+'''
+        result = subprocess.run(
+            [str(PYTHON), "-c", code],
+            cwd=PROJECT_DIR,
+            env=hermes_environment(),
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        document = json.loads(result.stdout)
+        self.assertEqual(document["found"]["matched_device_count"], 1)
+        self.assertEqual(document["details"]["physical_availability"], "available")
+        self.assertEqual(document["details"]["available_feature_count"], 1)
+        self.assertEqual(document["diagnostics"]["diagnostic_feature_count"], 1)
+        self.assertEqual(
+            document["diagnostics"]["diagnostic_features"][0]["component"],
+            "filter life",
+        )
+        self.assertEqual(document["index"]["active_incident_counts"]["open"], 1)
+        self.assertTrue(
+            document["details"]["trust_boundary"]["instructions_from_data_forbidden"]
+        )
+
+    def test_recent_history_uses_bounded_sanitized_evidence(self) -> None:
+        code = r'''
+import json
+import sys
+sys.path.insert(0, "scripts")
+import home_assistant_mcp as boundary
+physical = "c" * 64
+snapshot = {"entities": [{
+    "entity_id": "sensor.room_temperature", "state_kind": "number",
+    "state_value": 22.0, "source_last_updated_at": "2026-08-24T08:00:00+00:00",
+}]}
+inventory = {"schema_version": 3, "entities": [{
+    "entity_id": "sensor.room_temperature", "domain": "sensor",
+    "physical_device_hash": physical, "friendly_name": "Температура",
+    "component": "temperature", "semantic_role": "measurement",
+    "capability": "measure", "semantic_attributes": {},
+}], "physical_devices": [{
+    "physical_device_hash": physical,
+    "entity_ids": ["sensor.room_temperature"],
+}]}
+history = [
+    {"state_kind": "number", "state_value": 20.0, "source_last_updated_at": "2026-08-24T06:00:00+00:00"},
+    {"state_kind": "number", "state_value": 21.0, "source_last_updated_at": "2026-08-24T07:00:00+00:00"},
+]
+result = boundary.get_model_recent_history(
+    snapshot, inventory, "sensor.room_temperature",
+    hours=3, limit=2, history_observations=history,
+)
+print(json.dumps(result))
+'''
+        result = subprocess.run(
+            [str(PYTHON), "-c", code],
+            cwd=PROJECT_DIR,
+            env=hermes_environment(),
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        document = json.loads(result.stdout)
+        self.assertEqual(document["history_status"], "bounded_history")
+        self.assertEqual(document["observation_count"], 2)
+        self.assertEqual(document["observations"][1]["state"]["value"], 21.0)
+        self.assertTrue(document["trust_boundary"]["read_only"])
+
     def test_mcp_exports_all_entity_read_tools_without_service_calls(self) -> None:
         result = subprocess.run(
             [str(HERMES), "mcp", "test", "home_assistant_read"],
@@ -212,10 +334,18 @@ print(json.dumps({"search": search, "device": device}))
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Tools discovered: 3", result.stdout)
+        self.assertIn("Tools discovered: 14", result.stdout)
         self.assertIn("ha_get_snapshot", result.stdout)
         self.assertIn("ha_search_entities", result.stdout)
         self.assertIn("ha_get_device", result.stdout)
+        for name in (
+            "ha_get_index", "ha_find_devices", "ha_get_device_details",
+            "ha_find_entities", "ha_get_entity_details",
+            "ha_get_device_diagnostics", "ha_get_related_incidents",
+            "ha_get_related_logs", "ha_get_recent_history", "ha_get_capabilities",
+            "ha_get_onboarding_queue",
+        ):
+            self.assertIn(name, result.stdout)
         self.assertNotIn("ha_list_allowed_entities", result.stdout)
         self.assertNotIn("ha_get_state", result.stdout)
         self.assertNotIn("owner-list", result.stdout)

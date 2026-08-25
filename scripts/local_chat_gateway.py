@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import contextvars
 import hashlib
 import hmac
 import ipaddress
@@ -29,6 +30,9 @@ import owner_chat  # noqa: E402
 import incident_status  # noqa: E402
 import startup_self_check  # noqa: E402
 import qualification_status  # noqa: E402
+import context_builder  # noqa: E402
+import memory_store  # noqa: E402
+import turn_observability  # noqa: E402
 
 
 DEFAULT_BIND_HOST = "127.0.0.1"
@@ -329,15 +333,17 @@ class ChatApplication:
     def __init__(
         self,
         *,
-        answerer: Callable[[str, dict[str, Any], list[dict[str, str]]], str] = owner_chat.answer,
+        answerer: Callable[[str, dict[str, Any], list[dict[str, str]]], str] = owner_chat.answer_natural,
         context_factory: Callable[[], dict[str, Any]] = owner_chat.startup_context,
         clock: Callable[[], float] = time.monotonic,
         lan_access_key: str | None = None,
+        conversation_memory: context_builder.ConversationMemory | None = None,
     ) -> None:
         self.answerer = answerer
         self.context_factory = context_factory
         self.clock = clock
         self.lan_access_key = lan_access_key
+        self.conversation_memory = conversation_memory
         self.csrf_token = secrets.token_urlsafe(32)
         self.sessions: dict[str, Session] = {}
         self.sessions_lock = threading.Lock()
@@ -365,18 +371,76 @@ class ChatApplication:
     def answer(self, session_id: str, question: str) -> str:
         record = self.session(session_id)
         with record.lock:
-            response = self.answerer(question, record.context, list(record.history))
-            if not isinstance(response, str) or not response.strip():
-                raise LocalChatError("empty model response")
-            record.history.extend(
-                (
-                    {"role": "user", "content": question[:MAX_MESSAGE_CHARS]},
-                    {"role": "assistant", "content": response[:12_000]},
-                )
+            memory_session = context_builder.session_fingerprint(session_id)
+            trace_token = turn_observability.begin_turn(
+                owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                transport="local_chat",
+                session_key=memory_session,
             )
-            record.history = record.history[-owner_chat.MAX_HISTORY_MESSAGES:]
-            record.touched_at = self.clock()
+            try:
+                answer_context = dict(record.context)
+                answer_context["transport"] = "local_chat"
+                answer_history = list(record.history)
+                if self.conversation_memory is not None:
+                    try:
+                        bundle = self.conversation_memory.prepare(
+                            owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                            transport="local_chat",
+                            session_key=memory_session,
+                            current_turn=question,
+                            fallback_history=answer_history,
+                        )
+                        answer_context["memory"] = bundle.memory_context
+                        answer_history = bundle.history
+                        turn_observability.observe_memory_context(bundle.memory_context)
+                    except (
+                        memory_store.MemoryStoreError,
+                        context_builder.ContextBuilderError,
+                    ):
+                        pass
+                response = self.answerer(question, answer_context, answer_history)
+                if not isinstance(response, str) or not response.strip():
+                    raise LocalChatError("empty model response")
+                if self.conversation_memory is not None:
+                    try:
+                        self.conversation_memory.record_exchange(
+                            owner_scope=memory_store.PRIMARY_OWNER_SCOPE,
+                            transport="local_chat",
+                            session_key=memory_session,
+                            user_text=question[:MAX_MESSAGE_CHARS],
+                            assistant_text=response[:12_000],
+                        )
+                    except memory_store.MemoryStoreError:
+                        pass
+                record.history.extend(
+                    (
+                        {"role": "user", "content": question[:MAX_MESSAGE_CHARS]},
+                        {"role": "assistant", "content": response[:12_000]},
+                    )
+                )
+                record.history = record.history[-owner_chat.MAX_HISTORY_MESSAGES:]
+                record.touched_at = self.clock()
+            except Exception:
+                self._persist_turn_trace(trace_token, "failed")
+                raise
+            self._persist_turn_trace(trace_token, "completed")
             return response.strip()
+
+    def _persist_turn_trace(
+        self,
+        token: contextvars.Token[turn_observability.TurnTrace | None],
+        disposition: str,
+    ) -> None:
+        document = turn_observability.finish_turn(
+            token, final_disposition=disposition
+        )
+        store = getattr(self.conversation_memory, "store", None)
+        if document is None or not isinstance(store, memory_store.MemoryStore):
+            return
+        try:
+            store.write_agent_turn_trace(document)
+        except memory_store.MemoryStoreError:
+            pass
 
     def verify_access_key(self, supplied: str) -> bool:
         return self.lan_access_key is not None and hmac.compare_digest(
@@ -641,8 +705,13 @@ def main() -> int:
     allowed_networks = load_allowed_networks()
     lan_backend_port = load_lan_backend_port()
     lan_enabled = lan_backend_port is not None
+    try:
+        conversation_memory = context_builder.open_runtime_memory()
+    except memory_store.MemoryStoreError as error:
+        raise LocalChatError("persistent memory is unavailable") from error
     application = ChatApplication(
-        lan_access_key=load_lan_access_key(required=lan_enabled)
+        lan_access_key=load_lan_access_key(required=lan_enabled),
+        conversation_memory=conversation_memory,
     )
     handler = _configured_handler(
         "ConfiguredLocalChatHandler",

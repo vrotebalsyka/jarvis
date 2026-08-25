@@ -54,7 +54,6 @@ class WindowsOllamaSupervisorTests(unittest.TestCase):
 
     def test_runtime_limits_gpu_memory_pressure_and_parallelism(self) -> None:
         for setting in (
-            "OLLAMA_CONTEXT_LENGTH = '2048'",
             "OLLAMA_FLASH_ATTENTION = '1'",
             "OLLAMA_KV_CACHE_TYPE = 'q8_0'",
             "OLLAMA_NUM_PARALLEL = '1'",
@@ -62,6 +61,10 @@ class WindowsOllamaSupervisorTests(unittest.TestCase):
             "OLLAMA_KEEP_ALIVE = '5m'",
         ):
             self.assertIn(setting, SUPERVISOR)
+        self.assertIn("model_runtime_policy.py", SUPERVISOR)
+        self.assertIn("--context-window dialogue", SUPERVISOR)
+        self.assertIn("OLLAMA_CONTEXT_LENGTH = [string]$contextWindow", SUPERVISOR)
+        self.assertNotIn("OLLAMA_CONTEXT_LENGTH = '2048'", SUPERVISOR)
 
 
 if __name__ == "__main__":

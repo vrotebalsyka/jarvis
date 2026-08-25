@@ -186,15 +186,28 @@ def _device_proofs(
         incident_notices = notices.get(int(row["id"]), {})
         confirmed_notice = incident_notices.get("confirmed")
         resolved_notice = incident_notices.get("resolved")
+        confirmed_epoch = (
+            int(row["confirmed_epoch"])
+            if row["confirmed_epoch"] is not None else None
+        )
+        resolved_epoch = (
+            int(row["resolved_epoch"])
+            if row["resolved_epoch"] is not None else None
+        )
         confirmed_accepted = (
             confirmed_notice is not None
             and confirmed_notice["status"] == "accepted"
             and confirmed_notice["accepted_epoch"] is not None
+            and confirmed_epoch is not None
+            and int(confirmed_notice["accepted_epoch"]) >= confirmed_epoch
         )
         resolved_accepted = (
             resolved_notice is not None
             and resolved_notice["status"] == "accepted"
             and resolved_notice["accepted_epoch"] is not None
+            and confirmed_accepted
+            and resolved_epoch is not None
+            and int(resolved_notice["accepted_epoch"]) >= resolved_epoch
         )
         alert_seconds = (
             int(confirmed_notice["accepted_epoch"]) - int(row["first_observed_epoch"])

@@ -4,7 +4,6 @@ Description=Run the verified Home Butler self-check after WSL starts
 
 [Timer]
 OnBootSec=90s
-OnUnitActiveSec=10min
 RandomizedDelaySec=10s
 AccuracySec=1s
 Persistent=true

@@ -40,6 +40,9 @@ for required in \
   "$PROJECT_DIR/scripts/rotate-alice-webhook.py" \
   "$PROJECT_DIR/scripts/owner_chat.py" \
   "$PROJECT_DIR/scripts/model_ha_proof.py" \
+  "$PROJECT_DIR/scripts/model_runtime_policy.py" \
+  "$PROJECT_DIR/scripts/memory_store.py" \
+  "$PROJECT_DIR/scripts/context_builder.py" \
   "$PROJECT_DIR/config/systemd/home-butler-alice-skill.service" \
   "$PROJECT_DIR/config/systemd/home-butler-alice-tunnel.service" \
   "$PROJECT_DIR/config/systemd/home-butler-alice-health.service" \
@@ -66,7 +69,8 @@ readonly SERVICE_GID="$(id -g "$SERVICE_GROUP")"
 
 install -d -o root -g root -m 0700 -- "$SECRETS_DIR"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 -- \
-  "$SERVICE_HOME/.config" "$SERVICE_HOME/.config/ngrok" "$STATE_DIR"
+  "$SERVICE_HOME/.config" "$SERVICE_HOME/.config/ngrok" "$STATE_DIR" \
+  "$SERVICE_HOME/.local/state/home-butler/memory"
 
 write_private_root_file() {
   local target="$1" value="$2" temporary
@@ -163,7 +167,8 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 -- \
   "$NGROK_SOURCE" "$NGROK_TARGET"
 for source in \
   alice_skill_gateway.py alice_skill_health.py alice_claim_finalizer.py rotate-alice-webhook.py \
-  owner_chat.py model_ha_proof.py; do
+  owner_chat.py model_ha_proof.py model_runtime_policy.py \
+  memory_store.py context_builder.py; do
   install -o root -g root -m 0755 -- \
     "$PROJECT_DIR/scripts/$source" "$RUNTIME_DIR/scripts/$source"
 done

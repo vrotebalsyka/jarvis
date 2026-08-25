@@ -31,8 +31,12 @@ class ModelHaProofTests(unittest.TestCase):
         expected = {**ENTITY, "source": proof.SOURCE}
         calls: list[dict[str, object]] = []
 
-        def fake_call(_endpoint, path, payload):
+        def fake_call(_endpoint, path, payload, **kwargs):
             self.assertEqual(path, "/api/chat")
+            self.assertEqual(
+                kwargs["timeout"],
+                proof.model_runtime_policy.get_profile("voice_fast").request_timeout_seconds,
+            )
             calls.append(payload)
             if len(calls) == 1:
                 return {
@@ -57,10 +61,10 @@ class ModelHaProofTests(unittest.TestCase):
             ollama_call=fake_call,
             ollama_get=lambda *_args: {
                 "models": [{
-                    "name": "home-butler:latest",
+                    "name": proof.model_runtime_policy.get_profile("voice_fast").model,
                     "size": 100,
                     "size_vram": 100,
-                    "context_length": 2048,
+                    "context_length": 8192,
                 }]
             },
             snapshot_reader=lambda _command: (
@@ -77,8 +81,9 @@ class ModelHaProofTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual(result["proof_mode"], "voice_bounded")
         self.assertEqual(result["consumed_fact"], expected)
-        self.assertEqual(calls[0]["options"]["num_predict"], 48)
-        self.assertEqual(calls[1]["options"]["num_predict"], 64)
+        voice_profile = proof.model_runtime_policy.get_profile("voice_fast")
+        self.assertEqual(calls[0]["options"]["num_predict"], voice_profile.output_limit)
+        self.assertEqual(calls[1]["options"]["num_predict"], voice_profile.output_limit)
         tool_result = json.loads(calls[1]["messages"][3]["content"])
         self.assertEqual(tool_result["proof_entity"], expected)
         self.assertEqual(tool_result["home_assistant"]["entity_count"], 1)
@@ -219,8 +224,12 @@ class ModelHaProofTests(unittest.TestCase):
         expected = {**ENTITY, "source": proof.SOURCE}
         calls: list[dict[str, object]] = []
 
-        def fake_call(_endpoint, path, payload):
+        def fake_call(_endpoint, path, payload, **kwargs):
             self.assertEqual(path, "/api/chat")
+            self.assertEqual(
+                kwargs["timeout"],
+                proof.model_runtime_policy.get_profile("structured").request_timeout_seconds,
+            )
             calls.append(payload)
             if len(calls) == 1:
                 return {
@@ -244,7 +253,7 @@ class ModelHaProofTests(unittest.TestCase):
             ollama_get=lambda *_args: {
                 "models": [
                     {
-                        "name": "home-butler:latest",
+                        "name": proof.model_runtime_policy.get_profile("structured").model,
                         "size": 100,
                         "size_vram": 100,
                         "context_length": 8192,
@@ -268,8 +277,11 @@ class ModelHaProofTests(unittest.TestCase):
         self.assertEqual(result["home_assistant"]["service_calls"], 0)
         self.assertTrue(result["accelerator"]["fully_on_gpu"])
         self.assertEqual(len(calls), 2)
-        self.assertTrue(all(call["options"]["num_ctx"] == 2048 for call in calls))
-        self.assertTrue(all(call["keep_alive"] == "24h" for call in calls))
+        structured = proof.model_runtime_policy.get_profile("structured")
+        self.assertTrue(all(
+            call["options"]["num_ctx"] == structured.context_window for call in calls
+        ))
+        self.assertTrue(all(call["keep_alive"] == structured.keep_alive for call in calls))
         self.assertEqual(calls[1]["messages"][3]["role"], "tool")
         self.assertEqual(json.loads(calls[1]["messages"][3]["content"]), expected)
 

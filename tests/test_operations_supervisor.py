@@ -82,22 +82,26 @@ class OperationsSupervisorTests(unittest.TestCase):
         self.assertEqual(status["daily_report"]["state"], "missed")
         self.assertEqual(status["device_monitor"]["offline"], 1)
 
-    def test_daily_report_is_not_due_before_thirteen_and_missed_after_grace(self) -> None:
-        before = int(time.mktime((2026, 8, 11, 12, 59, 0, 0, 0, -1)))
-        retrying = int(time.mktime((2026, 8, 11, 13, 4, 0, 0, 0, -1)))
-        after = int(time.mktime((2026, 8, 11, 13, 16, 0, 0, 0, -1)))
-        self.assertEqual(
-            supervisor.read_daily_report(now=before)["state"], "not_due"
-        )
-        with tempfile.TemporaryDirectory() as temporary:
-            missing = Path(temporary) / "missing.json"
-            with mock.patch.object(supervisor, "DAILY_REPORT_STATE", missing):
-                self.assertEqual(
-                    supervisor.read_daily_report(now=retrying)["state"], "retrying"
-                )
-                self.assertEqual(
-                    supervisor.read_daily_report(now=after)["state"], "missed"
-                )
+    def test_daily_report_status_comes_from_persistent_scheduler(self) -> None:
+        scheduler_state = {
+            "task_id": "system-daily-report",
+            "state": "retrying",
+            "next_run_epoch": 1_786_435_300,
+            "last_run_epoch": 1_786_435_000,
+            "attempts": 2,
+            "verification": "not_sent",
+        }
+        with mock.patch.object(
+            supervisor.persistent_scheduler,
+            "read_daily_report_status",
+            return_value=scheduler_state,
+        ) as reader:
+            result = supervisor.read_daily_report(now=1_786_435_100)
+        reader.assert_called_once_with(now=1_786_435_100)
+        self.assertEqual(result["state"], "retrying")
+        self.assertEqual(result["next_run_epoch"], 1_786_435_300)
+        self.assertEqual(result["last_run_epoch"], 1_786_435_000)
+        self.assertFalse(result["verified"])
 
     def test_operations_status_is_private_and_check_accepts_attention(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

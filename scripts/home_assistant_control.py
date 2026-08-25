@@ -20,6 +20,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import home_assistant_read as ha_read  # noqa: E402
+import turn_observability  # noqa: E402
 
 
 ACTION_PATHS = {
@@ -317,8 +318,9 @@ def execute(
 def execute_safely(
     entity_id: str, action: str, value: object = None
 ) -> tuple[dict[str, Any], int]:
+    started = time.monotonic()
     try:
-        return execute(entity_id, action, value)
+        result, exit_code = execute(entity_id, action, value)
     except (ControlError, ha_read.AdapterError) as error:
         status = error.status if isinstance(error, ControlError) else "rejected"
         service_calls = (
@@ -327,7 +329,7 @@ def execute_safely(
         delivery = (
             error.delivery if isinstance(error, ControlError) else "not_sent"
         )
-        return (
+        result, exit_code = (
             {
                 "schema_version": 1,
                 "ok": False,
@@ -342,6 +344,18 @@ def execute_safely(
             },
             4 if service_calls else 3,
         )
+    turn_observability.record_tool_call(
+        f"ha_control.{action}",
+        latency_ms=round((time.monotonic() - started) * 1000),
+        policy_result="allowed" if result.get("service_calls", 0) else "rejected",
+        result_status=result.get("status", "unknown"),
+    )
+    if result.get("service_calls", 0):
+        turn_observability.record_action(f"ha_control.{action}")
+        turn_observability.record_verification(
+            result.get("verification", result.get("status", "unknown"))
+        )
+    return result, exit_code
 
 
 def run(argv: Sequence[str] | None = None) -> int:

@@ -95,6 +95,27 @@ class AliceTailscaleFunnelTests(unittest.TestCase):
             "local", "public:https://home-butler.example-tail.ts.net",
         ])
 
+    def test_inspect_is_read_only_and_requires_the_exact_route(self) -> None:
+        calls: list[tuple[str, ...]] = []
+
+        def runner(arguments: object) -> bytes:
+            call = tuple(arguments)
+            calls.append(call)
+            if call == ("status", "--json"):
+                return status_document()
+            if call == ("funnel", "status", "--json"):
+                return funnel_document()
+            raise AssertionError(call)
+
+        self.assertEqual(
+            funnel.inspect_funnel(runner),
+            "https://home-butler.example-tail.ts.net",
+        )
+        self.assertEqual(
+            calls,
+            [("status", "--json"), ("funnel", "status", "--json")],
+        )
+
     def test_rejects_extra_or_changed_funnel_routes(self) -> None:
         origin = "https://home-butler.example-tail.ts.net"
         funnel.validate_funnel_status(funnel_document(), origin)

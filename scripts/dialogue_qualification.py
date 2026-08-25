@@ -23,6 +23,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import alice_skill_gateway  # noqa: E402
 import alice_tailscale_funnel  # noqa: E402
+import memory_store  # noqa: E402
 import startup_self_check  # noqa: E402
 
 
@@ -33,6 +34,11 @@ MAX_STATUS_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 16 * 1024
 LOCAL_CHAT_HOST = "127.0.0.1"
 LOCAL_CHAT_PORT = 8780
+MODEL_TURN_TIMEOUT_SECONDS = 90
+DEFERRED_WAIT_SECONDS = 120
+DEFERRED_POLL_SECONDS = 1.0
+DEFERRED_TASK_RE = re.compile(r"\bЗадача\s+([a-f0-9]{8})\s+сохранена\b", re.IGNORECASE)
+DEFERRED_RESULT_RE = re.compile(r"^Задача\s+[a-f0-9]{8}:\s*(.+)$", re.IGNORECASE | re.DOTALL)
 CSRF_RE = re.compile(
     rb'<meta name="home-butler-csrf" content="([A-Za-z0-9_-]{43})">'
 )
@@ -47,6 +53,12 @@ SAFE_FAILURE_CODES = {
     "dialogue response size is invalid": "response_size",
     "dialogue response is invalid": "response_format",
     "dialogue answers are incomplete": "answers_incomplete",
+    "local dialogue history proof failed": "local_history",
+    "local dialogue free response proof failed": "local_free_dialogue",
+    "local dialogue canned response proof failed": "local_canned_response",
+    "public Alice dialogue history proof failed": "alice_history",
+    "public Alice dialogue free response proof failed": "alice_free_dialogue",
+    "public Alice dialogue canned response proof failed": "alice_canned_response",
     "local dialogue proof failed": "local_dialogue",
     "public Alice dialogue proof failed": "alice_dialogue",
     "public Alice dialogue failed": "alice_transport",
@@ -63,9 +75,9 @@ SAFE_FAILURE_CODES = {
     "dialogue proof is not ready for this boot": "stale_status",
 }
 PROMPTS = (
-    "Запомни для этого разговора кодовое слово Аврора и ответь естественно одной фразой.",
-    "Какое кодовое слово я попросил тебя запомнить?",
-    "Объясни простыми словами, почему небо днём синее, а на закате красное.",
+    "/модель Запомни для этого разговора кодовое слово Аврора и ответь естественно одной фразой.",
+    "/модель Какое кодовое слово я попросил тебя запомнить?",
+    "/модель Объясни простыми словами, почему небо днём синее, а на закате красное.",
 )
 
 
@@ -103,8 +115,12 @@ def _validate_answers(answers: list[str]) -> dict[str, bool]:
         >= 2
     )
     fake_tool_claim_absent = not any(value in joined for value in BLOCKED_TEXT)
-    if not all((history_verified, free_dialogue_verified, fake_tool_claim_absent)):
-        raise DialogueQualificationError("dialogue proof did not pass")
+    if not history_verified:
+        raise DialogueQualificationError("dialogue history proof failed")
+    if not free_dialogue_verified:
+        raise DialogueQualificationError("dialogue free response proof failed")
+    if not fake_tool_claim_absent:
+        raise DialogueQualificationError("dialogue canned response proof failed")
     return {
         "history_verified": history_verified,
         "free_dialogue_verified": free_dialogue_verified,
@@ -141,6 +157,90 @@ def _alice_request(
     ).encode("utf-8")
 
 
+def _deferred_task_id(text: str) -> str | None:
+    match = DEFERRED_TASK_RE.search(text)
+    return match.group(1).casefold() if match is not None else None
+
+
+def _deferred_result(text: str) -> str:
+    match = DEFERRED_RESULT_RE.fullmatch(text.strip())
+    if match is None or not match.group(1).strip():
+        raise DialogueQualificationError("public Alice envelope is invalid")
+    return match.group(1).strip()
+
+
+def _wait_for_deferred_task(
+    task_id: str,
+    *,
+    store: memory_store.MemoryStore,
+    clock: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> None:
+    deadline = clock() + DEFERRED_WAIT_SECONDS
+    while True:
+        goals = store.goals_by_intent_prefix(
+            memory_store.PRIMARY_OWNER_SCOPE,
+            alice_skill_gateway.DEFERRED_INTENT_PREFIX,
+            statuses=("active", "blocked", "completed"),
+            limit=20,
+        )
+        goal = next(
+            (
+                item for item in goals
+                if str(item.get("goal_id", "")).startswith(task_id)
+            ),
+            None,
+        )
+        if goal is not None and goal.get("status") in {"blocked", "completed"}:
+            return
+        if clock() >= deadline:
+            raise DialogueQualificationError("public Alice dialogue failed")
+        sleeper(DEFERRED_POLL_SECONDS)
+
+
+def _public_alice_turn(
+    prompt: str,
+    *,
+    session_id: str,
+    message_id: int,
+    config: alice_skill_gateway.GatewayConfig,
+    hostname: str,
+) -> str:
+    connection = http.client.HTTPSConnection(
+        hostname, 443, timeout=MODEL_TURN_TIMEOUT_SECONDS
+    )
+    try:
+        connection.request(
+            "POST",
+            config.webhook_path,
+            body=_alice_request(
+                prompt,
+                session_id=session_id,
+                message_id=message_id,
+                config=config,
+            ),
+            headers={
+                "Accept": "application/json",
+                "Connection": "close",
+                "Content-Type": "application/json",
+            },
+        )
+        response = connection.getresponse()
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except (OSError, TimeoutError, http.client.HTTPException) as error:
+        raise DialogueQualificationError("public Alice dialogue failed") from error
+    finally:
+        connection.close()
+    if response.status != 200:
+        raise DialogueQualificationError("public Alice dialogue failed")
+    document = _strict_json(raw)
+    item = document.get("response")
+    text = item.get("text") if isinstance(item, dict) else None
+    if not isinstance(text, str) or item.get("end_session") is not False:
+        raise DialogueQualificationError("public Alice envelope is invalid")
+    return text
+
+
 def public_alice_dialogue(
     config: alice_skill_gateway.GatewayConfig,
     *,
@@ -162,37 +262,29 @@ def public_alice_dialogue(
     if alice_skill_gateway.ID_RE.fullmatch(session_id) is None:
         raise DialogueQualificationError("dialogue session is invalid")
     answers: list[str] = []
-    for message_id, prompt in enumerate(PROMPTS):
-        connection = http.client.HTTPSConnection(parsed.hostname, 443, timeout=20)
-        try:
-            connection.request(
-                "POST",
-                config.webhook_path,
-                body=_alice_request(
-                    prompt,
-                    session_id=session_id,
-                    message_id=message_id,
-                    config=config,
-                ),
-                headers={
-                    "Accept": "application/json",
-                    "Connection": "close",
-                    "Content-Type": "application/json",
-                },
+    message_id = 0
+    deferred_store = memory_store.MemoryStore()
+    for prompt in PROMPTS:
+        text = _public_alice_turn(
+            prompt,
+            session_id=session_id,
+            message_id=message_id,
+            config=config,
+            hostname=parsed.hostname,
+        )
+        message_id += 1
+        task_id = _deferred_task_id(text)
+        if task_id is not None:
+            _wait_for_deferred_task(task_id, store=deferred_store)
+            text = _public_alice_turn(
+                f"статус задачи {task_id}",
+                session_id=session_id,
+                message_id=message_id,
+                config=config,
+                hostname=parsed.hostname,
             )
-            response = connection.getresponse()
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-        except (OSError, TimeoutError, http.client.HTTPException) as error:
-            raise DialogueQualificationError("public Alice dialogue failed") from error
-        finally:
-            connection.close()
-        if response.status != 200:
-            raise DialogueQualificationError("public Alice dialogue failed")
-        document = _strict_json(raw)
-        item = document.get("response")
-        text = item.get("text") if isinstance(item, dict) else None
-        if not isinstance(text, str) or item.get("end_session") is not False:
-            raise DialogueQualificationError("public Alice envelope is invalid")
+            message_id += 1
+            text = _deferred_result(text)
         answers.append(text)
     return answers
 
@@ -226,7 +318,7 @@ def local_chat_dialogue() -> list[str]:
             {"message": prompt}, ensure_ascii=False, separators=(",", ":")
         ).encode("utf-8")
         connection = http.client.HTTPConnection(
-            LOCAL_CHAT_HOST, LOCAL_CHAT_PORT, timeout=30
+            LOCAL_CHAT_HOST, LOCAL_CHAT_PORT, timeout=MODEL_TURN_TIMEOUT_SECONDS
         )
         try:
             connection.request(
@@ -380,12 +472,12 @@ def run_once(
     try:
         local_checks = _validate_answers(local_answers)
     except DialogueQualificationError as error:
-        raise DialogueQualificationError("local dialogue proof failed") from error
+        raise DialogueQualificationError(f"local {error}") from error
     public_answers = public_runner(config)
     try:
         public_checks = _validate_answers(public_answers)
     except DialogueQualificationError as error:
-        raise DialogueQualificationError("public Alice dialogue proof failed") from error
+        raise DialogueQualificationError(f"public Alice {error}") from error
     document = {
         "schema_version": SCHEMA_VERSION,
         "observed_epoch": int(clock()),

@@ -1,0 +1,15 @@
+# Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
+[Unit]
+Description=Refresh Home Butler new-device onboarding queue
+
+[Timer]
+OnBootSec=6min
+OnUnitActiveSec=1min
+RandomizedDelaySec=10s
+AccuracySec=1s
+Persistent=true
+Unit=home-butler-device-onboarding.service
+
+[Install]
+WantedBy=timers.target
+

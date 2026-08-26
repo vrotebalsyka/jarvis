@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed proof that the local Ollama model uses sanitized HA facts."""
+"""Fail-closed proof and grounding boundary for local Ollama model calls."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping, Sequence
 
 
 sys.dont_write_bytecode = True
@@ -41,6 +41,45 @@ EXPECTED_ENTITY_KEYS = {
     "observed_at",
     "source",
 }
+DEVICE_QUERY_STOPWORDS = frozenset({
+    "что", "как", "какой", "какая", "какое", "какие", "с", "со", "у",
+    "о", "об", "про", "покажи", "проверь", "статус", "состояние", "робот", "робота",
+    "роботом", "пылесос", "пылесоса", "пылесосом", "устройство", "устройства",
+    "прибор", "прибора", "мой", "моя", "моего", "там", "сейчас",
+    "заряд", "заряда", "батарея", "батареи", "фильтр", "фильтра",
+    "щетка", "щетки", "щётка", "щётки", "швабра", "швабры",
+    "ресурс", "ресурсы", "статус", "состояние", "где", "находится",
+})
+ACTION_RE = re.compile(
+    r"\b(?:включи(?:те)?|выключи(?:те)?|переключи(?:те)?|нажми(?:те)?|"
+    r"запусти(?:те)?|останови(?:те)?|верни(?:те)?|установи(?:те)?|"
+    r"поставь(?:те)?|выбери(?:те)?|задай(?:те)?)\b",
+    re.IGNORECASE,
+)
+CLARIFICATION_RE = re.compile(
+    r"(?:несколько|уточн|назовите|выберите|какой|какую).{0,180}"
+    r"(?:команд|функц|вариант|ничего\s+не\s+мен)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+COMPONENT_LABELS = {
+    "main": "основное состояние",
+    "main_robot": "основное состояние",
+    "battery": "батарея",
+    "filter": "фильтр",
+    "main_brush": "основная щётка",
+    "side_brush": "боковая щётка",
+    "mop": "швабра",
+    "water": "уровень воды",
+    "error": "ошибка",
+    "dock": "док-станция",
+}
+SUCCESS_WORD_RE = re.compile(
+    r"\b(?:готово|включил|включено|выключил|выключено|запустил|запущено|"
+    r"установил|выбрал|вернул|выполнил|успешно)\b",
+    re.IGNORECASE,
+)
 
 
 class ProofError(RuntimeError):
@@ -168,6 +207,370 @@ def parse_document(raw: bytes) -> dict[str, Any]:
     return value
 
 
+def normalize_device_query(value: object) -> str:
+    """Reduce common Russian case forms without inventing a device identity."""
+    if not isinstance(value, str):
+        raise ProofError("device query is invalid")
+    text = " ".join(value.strip().split())
+    if not text:
+        raise ProofError("device query is empty")
+    # The real HA registry contains the proper name Андрей.  Russian case forms
+    # previously caused exact substring search to miss it.
+    match = re.search(r"\bандре(?:й|я|ю|ем|е)\b", text, flags=re.IGNORECASE)
+    if match is not None:
+        replaced = text[:match.start()] + "Андрей" + text[match.end():]
+        tokens = re.findall(r"[A-Za-zА-Яа-яЁё0-9_-]+", replaced)
+        selected = [
+            token for token in tokens
+            if token.casefold() not in DEVICE_QUERY_STOPWORDS
+        ]
+        # Normal questions collapse to the exact registry name.  Corrections or
+        # multi-device phrases keep their extra meaningful words and therefore
+        # fail closed instead of silently choosing Андрей.
+        return " ".join(selected)[:120] if selected else "Андрей"
+    # Other device names are left intact. The resolver may use type/area words,
+    # and stripping them here would turn e.g. "новые устройства" into "новые".
+    return text[:120]
+
+
+def _payload_messages(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+    return [item for item in messages if isinstance(item, Mapping)]
+
+
+def _current_user(payload: Mapping[str, Any]) -> str:
+    for item in reversed(_payload_messages(payload)):
+        if item.get("role") != "user" or not isinstance(item.get("content"), str):
+            continue
+        value = str(item["content"])
+        if value.startswith("CURRENT_USER="):
+            return value.removeprefix("CURRENT_USER=").strip()
+        return value.strip()
+    return ""
+
+
+def _repair_intent_response(payload: Mapping[str, Any], document: dict[str, Any]) -> None:
+    """Preserve one explicit action across a bounded clarification turn."""
+    schema = payload.get("format")
+    properties = schema.get("properties") if isinstance(schema, Mapping) else None
+    if not isinstance(properties, Mapping) or not {
+        "kind", "device_query", "requested_action", "uses_coreference"
+    } <= set(properties):
+        return
+    message = document.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        return
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(parsed, dict):
+        return
+    query = parsed.get("device_query")
+    if isinstance(query, str) and query.strip():
+        parsed["device_query"] = normalize_device_query(query)
+
+    messages = _payload_messages(payload)
+    current = _current_user(payload)
+    previous_user = ""
+    previous_assistant = ""
+    skipped_current = False
+    for item in reversed(messages):
+        role = item.get("role")
+        value = item.get("content")
+        if not isinstance(value, str):
+            continue
+        if role == "user" and not skipped_current:
+            skipped_current = True
+            continue
+        if role == "assistant" and not previous_assistant:
+            previous_assistant = value
+        elif role == "user" and not previous_user:
+            previous_user = value.removeprefix("CURRENT_USER=").strip()
+        if previous_user and previous_assistant:
+            break
+    is_short_selection = bool(
+        current
+        and len(current) <= 100
+        and len(re.findall(r"[A-Za-zА-Яа-яЁё0-9_-]+", current)) <= 6
+    )
+    if (
+        is_short_selection
+        and ACTION_RE.search(previous_user)
+        and CLARIFICATION_RE.search(previous_assistant)
+        and parsed.get("kind") in {"conversation", "ha_read"}
+    ):
+        match = ACTION_RE.search(previous_user)
+        parsed.update({
+            "kind": "ha_action",
+            "device_query": normalize_device_query(current),
+            "requested_action": match.group(0) if match is not None else previous_user[:160],
+            "requested_value": None,
+            "uses_coreference": True,
+            "separate_confirmation": False,
+        })
+    message["content"] = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+
+
+def _normalize_tool_calls(document: dict[str, Any]) -> None:
+    message = document.get("message")
+    calls = message.get("tool_calls") if isinstance(message, dict) else None
+    if not isinstance(calls, list):
+        return
+    for call in calls:
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict) or function.get("name") != "ha_find_devices":
+            continue
+        arguments = function.get("arguments")
+        if not isinstance(arguments, dict):
+            continue
+        query = arguments.get("query")
+        if isinstance(query, str) and query.strip():
+            arguments["query"] = normalize_device_query(query)
+
+
+def _tool_results(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for item in _payload_messages(payload):
+        if item.get("role") != "tool" or not isinstance(item.get("content"), str):
+            continue
+        try:
+            value = json.loads(str(item["content"]))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            results.append(value)
+    return results
+
+
+def _feature_text(feature: Mapping[str, Any]) -> str:
+    values = (
+        feature.get("human_name"),
+        feature.get("component"),
+        feature.get("semantic_role"),
+        feature.get("domain"),
+    )
+    return " ".join(str(value) for value in values if isinstance(value, str)).casefold()
+
+
+def _feature_value(feature: Mapping[str, Any]) -> object:
+    state = feature.get("state")
+    return state.get("value") if isinstance(state, Mapping) else None
+
+
+def _feature_available(feature: Mapping[str, Any]) -> bool:
+    return feature.get("availability") == "available"
+
+
+def _human_value(value: object) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _feature_label(feature: Mapping[str, Any]) -> str:
+    component = str(feature.get("component") or "").casefold()
+    labels = {
+        "filter": "фильтр",
+        "hypa": "фильтр",
+        "main_brush": "основная щётка",
+        "side_brush": "боковая щётка",
+        "mop": "швабра",
+        "battery": "батарея",
+        "dock": "док-станция",
+        "water": "уровень воды",
+    }
+    if component in labels:
+        return labels[component]
+    human = feature.get("human_name")
+    return str(human) if isinstance(human, str) and human.strip() else (component or "функция")
+
+
+def _state_phrase(value: object) -> str:
+    folded = str(value).strip().casefold()
+    mapping = {
+        "charging": "на док-станции и заряжается",
+        "docked": "на док-станции",
+        "returning": "возвращается на док-станцию",
+        "cleaning": "выполняет уборку",
+        "paused": "уборка приостановлена",
+        "idle": "ожидает",
+        "off": "выключен",
+        "on": "включён",
+    }
+    return mapping.get(folded, f"состояние «{value}»")
+
+
+def render_device_observation(result: Mapping[str, Any], current_user: str = "") -> str:
+    """Render only literal device facts; the model cannot override this text."""
+    name = str(result.get("display_name") or "Устройство")
+    raw_features = result.get("features")
+    if not isinstance(raw_features, list):
+        raw_features = result.get("diagnostic_features")
+    features = [item for item in raw_features or [] if isinstance(item, Mapping)]
+    folded_question = current_user.casefold()
+
+    battery = next(
+        (
+            item for item in features
+            if "battery" in _feature_text(item) or "батар" in _feature_text(item)
+        ),
+        None,
+    )
+    primary = next(
+        (
+            item for item in features
+            if item.get("domain") == "vacuum"
+            or str(item.get("component", "")).casefold() in {
+                "main", "main_robot", "vacuum", "status"
+            }
+        ),
+        None,
+    )
+    maintenance = [
+        item for item in features
+        if item.get("semantic_role") in {"maintenance", "consumable"}
+        or any(
+            marker in _feature_text(item)
+            for marker in ("life", "ресурс", "filter", "фильтр", "brush", "щет", "mop", "шваб")
+        )
+    ]
+    unavailable = [item for item in features if not _feature_available(item)]
+
+    if any(marker in folded_question for marker in ("батар", "заряд")) and battery is not None:
+        value = _feature_value(battery)
+        if value is None:
+            return f"{name}: значение заряда сейчас не передано Home Assistant."
+        return f"{name}: заряд {_human_value(value)}%."
+
+    requested_maintenance: Mapping[str, Any] | None = None
+    for item in maintenance:
+        text = _feature_text(item)
+        if (
+            ("фильтр" in folded_question and ("filter" in text or "фильтр" in text))
+            or ("боков" in folded_question and "side" in text)
+            or ("основн" in folded_question and "main" in text and ("brush" in text or "щет" in text))
+            or ("шваб" in folded_question and ("mop" in text or "шваб" in text))
+        ):
+            requested_maintenance = item
+            break
+    if requested_maintenance is not None:
+        label = _feature_label(requested_maintenance)
+        value = _feature_value(requested_maintenance)
+        availability = "доступен" if _feature_available(requested_maintenance) else "недоступен"
+        return f"{name}: {label} — {_human_value(value)}%, объект {availability}."
+
+    parts: list[str] = []
+    if primary is not None and _feature_available(primary):
+        parts.append(_state_phrase(_feature_value(primary)))
+    elif result.get("physical_availability") == "available":
+        parts.append("основные функции доступны")
+    else:
+        parts.append("основные функции недоступны")
+    if battery is not None and _feature_available(battery) and _feature_value(battery) is not None:
+        value = _feature_value(battery)
+        parts.append(f"заряд {_human_value(value)}%")
+    maintenance_parts: list[str] = []
+    for item in maintenance[:4]:
+        value = _feature_value(item)
+        if value is None or not _feature_available(item):
+            continue
+        label = _feature_label(item)
+        maintenance_parts.append(f"{label}: {_human_value(value)}%")
+    answer = f"{name}: " + "; ".join(parts) + "."
+    details: list[str] = []
+    if maintenance_parts:
+        details.append("ресурсы: " + ", ".join(maintenance_parts))
+    if unavailable:
+        names = ", ".join(_feature_label(item) for item in unavailable[:3])
+        suffix = f" ({names})" if names else ""
+        details.append(
+            f"недоступны {len(unavailable)} функции{suffix}; причина по текущим данным не подтверждена, "
+            "весь прибор неисправным не считаю"
+        )
+    else:
+        details.append("недоступных функций в переданном снимке нет")
+    answer += " " + "; ".join(details).capitalize() + "."
+    return answer[:900]
+
+
+def _action_step_status(result: Mapping[str, Any]) -> tuple[str, Mapping[str, Any] | None]:
+    overall = str(result.get("adapter_status") or result.get("status") or "unknown")
+    steps = result.get("steps")
+    last = (
+        next((item for item in reversed(steps) if isinstance(item, Mapping)), None)
+        if isinstance(steps, list) and steps
+        else None
+    )
+    # A composite plan is only successful when the executor marked the whole
+    # plan verified.  A verified last step must never hide an earlier failed or
+    # merely accepted step.
+    if overall != "verified":
+        return overall, last
+    if last is not None:
+        return str(last.get("adapter_status") or overall), last
+    return overall, None
+
+
+def render_action_receipt(result: Mapping[str, Any]) -> str:
+    status, step = _action_step_status(result)
+    source = step if step is not None else result
+    device = str(source.get("device_name") or result.get("device_name") or "устройство")
+    feature = str(source.get("feature_name") or result.get("feature_name") or "выбранная функция")
+    if status == "verified":
+        return f"Готово: {device}, функция «{feature}». Home Assistant подтвердил результат повторным чтением."
+    if status in {"accepted", "accepted_unverified", "partially_verified"}:
+        return (
+            f"Команда для {device}, функция «{feature}», принята, но физический "
+            "результат не подтверждён. Автоматически не повторяю."
+        )
+    if status == "confirmation_required":
+        return f"Для действия «{feature}» у {device} нужно отдельное подтверждение. Ничего не менял."
+    if status == "delivery_unknown":
+        return f"Команда для {device} могла быть доставлена, но подтверждения нет. Автоматически не повторяю."
+    return f"Команда для {device} не выполнена или не подтверждена. Состояние успешным не считаю."
+
+
+def _ground_final_answer(payload: Mapping[str, Any], document: dict[str, Any]) -> None:
+    if payload.get("format") is not None:
+        return
+    message = document.get("message")
+    if not isinstance(message, dict) or message.get("tool_calls"):
+        return
+    results = _tool_results(payload)
+    if not results:
+        return
+    current = _current_user(payload)
+    for result in reversed(results):
+        if isinstance(result.get("features"), list) or isinstance(result.get("diagnostic_features"), list):
+            message["content"] = render_device_observation(result, current)
+            return
+        if (
+            "steps" in result
+            or "adapter_status" in result
+            or (
+                result.get("status") in {
+                    "verified", "accepted", "accepted_unverified", "partially_verified",
+                    "not_verified", "failed", "delivery_unknown", "confirmation_required",
+                }
+                and ("service_calls" in result or "action" in result)
+            )
+        ):
+            message["content"] = render_action_receipt(result)
+            return
+
+
+def postprocess_model_document(payload: Mapping[str, Any], document: dict[str, Any]) -> dict[str, Any]:
+    """Repair bounded morphology and replace ungrounded HA prose with receipts."""
+    _repair_intent_response(payload, document)
+    _normalize_tool_calls(document)
+    _ground_final_answer(payload, document)
+    return document
+
+
 def call_ollama(
     endpoint: OllamaEndpoint,
     path: str,
@@ -191,7 +594,7 @@ def call_ollama(
         raw = response.read(MAX_RESPONSE_BYTES + 1)
         if response.status != 200:
             raise ProofError("Ollama request failed")
-        document = parse_document(raw)
+        document = postprocess_model_document(payload, parse_document(raw))
         call_status = "completed"
         return document
     except (OSError, TimeoutError, http.client.HTTPException) as error:

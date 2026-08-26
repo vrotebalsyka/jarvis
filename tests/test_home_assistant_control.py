@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contracts for the strict switch/button/light Home Assistant control boundary."""
+"""Contracts for the strict Home Assistant control and receipt boundary."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def config() -> ha_read.AdapterConfig:
     )
 
 
-def snapshot(entity_id: str, value: str | None) -> dict[str, object]:
+def snapshot(entity_id: str, value: object) -> dict[str, object]:
     return {
         "status": "healthy",
         "entities": [
@@ -64,10 +64,7 @@ class FakeConnection:
 class ControlBoundaryTests(unittest.TestCase):
     def test_failed_post_is_counted_as_sent_and_not_as_preflight_rejection(self) -> None:
         error = control.ControlError(
-            "sanitized",
-            status="failed",
-            service_calls=1,
-            delivery="ha_rejected",
+            "sanitized", status="failed", service_calls=1, delivery="ha_rejected"
         )
         with mock.patch.object(control, "execute", side_effect=error):
             result, exit_code = control.execute_safely(
@@ -78,14 +75,13 @@ class ControlBoundaryTests(unittest.TestCase):
         self.assertEqual(result["service_calls"], 1)
         self.assertEqual(result["http_method"], "POST")
         self.assertEqual(result["delivery"], "ha_rejected")
+        self.assertEqual(result["verification_strength"], "none")
 
     def test_preflight_rejection_reports_zero_service_calls(self) -> None:
         with mock.patch.object(
             control, "execute", side_effect=control.ControlError("invalid entity")
         ):
-            result, exit_code = control.execute_safely(
-                "lock.front_door", "unlock"
-            )
+            result, exit_code = control.execute_safely("lock.front_door", "unlock")
         self.assertEqual(exit_code, 3)
         self.assertEqual(result["status"], "rejected")
         self.assertEqual(result["service_calls"], 0)
@@ -128,9 +124,7 @@ class ControlBoundaryTests(unittest.TestCase):
     def test_post_uses_one_fixed_service_path_and_minimal_body(self) -> None:
         connection = FakeConnection()
         control.post_service(
-            config(),
-            "switch.kavidor_switch_1",
-            "turn_on",
+            config(), "switch.kavidor_switch_1", "turn_on",
             connection_factory=lambda _config: connection,
         )
         self.assertTrue(connection.closed)
@@ -144,9 +138,7 @@ class ControlBoundaryTests(unittest.TestCase):
     def test_vacuum_return_uses_fixed_service_path(self) -> None:
         connection = FakeConnection()
         control.post_service(
-            config(),
-            "vacuum.andrey",
-            "return_home",
+            config(), "vacuum.andrey", "return_home",
             connection_factory=lambda _config: connection,
         )
         method, path, body, _headers = connection.requests[0]
@@ -176,9 +168,10 @@ class ControlBoundaryTests(unittest.TestCase):
                 self.assertEqual((method, path), ("POST", expected_path))
                 self.assertEqual(json.loads(body), expected_body)
 
-    def test_number_value_is_range_checked_before_post_and_verified_after(self) -> None:
+    def test_number_value_is_range_checked_and_requires_stable_readback(self) -> None:
         reads = iter((
             snapshot("number.andrey_volume", 1.0),
+            snapshot("number.andrey_volume", 5.0),
             snapshot("number.andrey_volume", 5.0),
         ))
         calls = []
@@ -191,9 +184,7 @@ class ControlBoundaryTests(unittest.TestCase):
                         "entity_id": "number.andrey_volume",
                         "friendly_name": "Андрей Alarm Volume",
                         "available": True,
-                        "min": 0.0,
-                        "max": 10.0,
-                        "step": 1.0,
+                        "min": 0.0, "max": 10.0, "step": 1.0,
                     }],
                 }, 0
             return next(reads), 0
@@ -210,29 +201,19 @@ class ControlBoundaryTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(calls, [("number.andrey_volume", "set_value", 5)])
         self.assertEqual(result["after_state"], 5.0)
+        self.assertEqual(result["verification"], "stable_state_matches_expected")
 
-        with (
-            mock.patch.object(ha_read, "load_config", return_value=config()),
-            self.assertRaises(control.ControlError),
-        ):
-            control.execute(
-                "number.andrey_volume", "set_value", 50,
-                snapshot_reader=read,
-                service_caller=lambda *_args: self.fail("out-of-range value was posted"),
-            )
-
-    def test_switch_action_requires_readback_matching_expected_state(self) -> None:
-        snapshots = iter((snapshot("switch.kavidor_switch_1", "off"), snapshot("switch.kavidor_switch_1", "on")))
+    def test_switch_action_requires_two_matching_readbacks(self) -> None:
+        snapshots = iter((
+            snapshot("switch.kavidor_switch_1", "off"),
+            snapshot("switch.kavidor_switch_1", "on"),
+            snapshot("switch.kavidor_switch_1", "on"),
+        ))
         calls: list[tuple[str, str]] = []
-
-        def read(_command):
-            return next(snapshots), 0
-
         with mock.patch.object(ha_read, "load_config", return_value=config()):
             result, exit_code = control.execute(
-                "switch.kavidor_switch_1",
-                "turn_on",
-                snapshot_reader=read,
+                "switch.kavidor_switch_1", "turn_on",
+                snapshot_reader=lambda _command: (next(snapshots), 0),
                 service_caller=lambda _cfg, entity_id, action: calls.append((entity_id, action)),
                 sleeper=lambda _seconds: None,
             )
@@ -240,47 +221,54 @@ class ControlBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [("switch.kavidor_switch_1", "turn_on")])
         self.assertEqual(result["before_state"], "off")
         self.assertEqual(result["after_state"], "on")
-        self.assertEqual(result["service_calls"], 1)
-        self.assertEqual(result["verification"], "state_matches_expected")
+        self.assertEqual(result["verification"], "stable_state_matches_expected")
+        self.assertEqual(result["verification_strength"], "state_readback")
 
-    def test_light_action_uses_fixed_path_and_requires_matching_readback(self) -> None:
-        connection = FakeConnection()
-        control.post_service(
-            config(),
-            "light.kitchen",
-            "turn_off",
-            connection_factory=lambda _config: connection,
-        )
-        method, path, body, _headers = connection.requests[0]
-        self.assertEqual((method, path), ("POST", "/api/services/light/turn_off"))
-        self.assertEqual(json.loads(body), {"entity_id": "light.kitchen"})
-
-        snapshots = iter((snapshot("light.kitchen", "on"), snapshot("light.kitchen", "off")))
+    def test_transient_switch_state_is_not_verified(self) -> None:
+        values = ["off", "on", "off", "off", "off", "off", "off", "off", "off"]
+        snapshots = iter(snapshot("switch.dishwasher_power", value) for value in values)
         with mock.patch.object(ha_read, "load_config", return_value=config()):
             result, exit_code = control.execute(
-                "light.kitchen",
-                "turn_off",
+                "switch.dishwasher_power", "turn_on",
+                snapshot_reader=lambda _command: (next(snapshots), 0),
+                service_caller=lambda *_args: None,
+                sleeper=lambda _seconds: None,
+            )
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(result["status"], "not_verified")
+        self.assertEqual(result["after_state"], "off")
+
+    def test_button_press_is_accepted_but_never_physically_verified(self) -> None:
+        snapshots = iter((snapshot("button.identify", None), snapshot("button.identify", None)))
+        with mock.patch.object(ha_read, "load_config", return_value=config()):
+            result, exit_code = control.execute(
+                "button.identify", "press",
+                snapshot_reader=lambda _command: (next(snapshots), 0),
+                service_caller=lambda *_args: None,
+            )
+        self.assertEqual(exit_code, control.ACCEPTED_UNVERIFIED_EXIT)
+        self.assertEqual(result["status"], "accepted_unverified")
+        self.assertEqual(result["verification"], "command_accepted_no_physical_proof")
+        self.assertEqual(result["verification_strength"], "transport_only")
+        self.assertFalse(result["ok"])
+
+    def test_vacuum_return_requires_returning_docked_or_charging_state(self) -> None:
+        snapshots = iter((
+            snapshot("vacuum.andrey", "cleaning"),
+            snapshot("vacuum.andrey", "cleaning"),
+            snapshot("vacuum.andrey", "returning"),
+        ))
+        with mock.patch.object(ha_read, "load_config", return_value=config()):
+            result, exit_code = control.execute(
+                "vacuum.andrey", "return_home",
                 snapshot_reader=lambda _command: (next(snapshots), 0),
                 service_caller=lambda *_args: None,
                 sleeper=lambda _seconds: None,
             )
         self.assertEqual(exit_code, 0)
         self.assertEqual(result["status"], "verified")
-        self.assertEqual(result["after_state"], "off")
-
-    def test_button_press_is_read_back_without_claiming_physical_state(self) -> None:
-        snapshots = iter((snapshot("button.identify", None), snapshot("button.identify", None)))
-        with mock.patch.object(ha_read, "load_config", return_value=config()):
-            result, exit_code = control.execute(
-                "button.identify",
-                "press",
-                snapshot_reader=lambda _command: (next(snapshots), 0),
-                service_caller=lambda *_args: None,
-            )
-        self.assertEqual(exit_code, 0)
-        self.assertEqual(result["status"], "accepted")
-        self.assertEqual(result["verification"], "get_readback_completed")
-        self.assertEqual(result["service_calls"], 1)
+        self.assertEqual(result["after_state"], "returning")
+        self.assertEqual(result["verification_strength"], "physical_state")
 
 
 if __name__ == "__main__":

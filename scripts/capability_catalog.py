@@ -185,6 +185,14 @@ def _inventory_join(inventory: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return joined
 
 
+def _verification_method(domain: str) -> str:
+    if domain == "button":
+        return "accepted_without_physical_proof"
+    if domain == "vacuum":
+        return "semantic_state_matches_expected"
+    return "stable_state_matches_expected"
+
+
 class CapabilityCatalog:
     """Private mapping from opaque action IDs to the existing control adapter."""
 
@@ -244,11 +252,7 @@ class CapabilityCatalog:
                     risk_class=risk_class,
                     owner_confirmation=confirmation,
                     parameter_schema=parameters,
-                    verification_method=(
-                        "accepted_with_get_readback"
-                        if domain in {"button", "vacuum"}
-                        else "state_matches_expected"
-                    ),
+                    verification_method=_verification_method(domain),
                     entity_id=entity_id,
                 ))
         return cls(sorted(capabilities, key=lambda item: item.capability_id))
@@ -315,6 +319,7 @@ class CapabilityCatalog:
             "risk_class": capability.risk_class,
             "adapter_status": result.get("status"),
             "verification": result.get("verification"),
+            "verification_strength": result.get("verification_strength", "none"),
             "before_state": result.get("before_state"),
             "after_state": result.get("after_state"),
             "service_calls": result.get("service_calls", 0),

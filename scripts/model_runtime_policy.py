@@ -22,6 +22,32 @@ REQUIRED_PROFILES = frozenset(
     {"voice_fast", "dialogue", "diagnostic", "structured", "summarizer"}
 )
 
+# These lessons are injected into every interactive model request.  They are
+# deliberately short: the 4B model remains warm and fast, while the host keeps
+# the final authority over facts and actions.  The examples come from verified
+# owner feedback and sanitized Home Assistant observations.
+GROUNDING_LESSONS = """
+HOME_BUTLER_VERIFIED_LESSONS_V2:
+1. TOOL_RESULT is the only source of current Home Assistant facts. Never replace
+   its values with assumptions, prior knowledge or a plausible story.
+2. State `charging` or `docked` means the robot is at/on its dock; it does not
+   prove movement or active cleaning. State `active` must be reported literally
+   unless another verified field explains it.
+3. A battery value of 100 means 100 percent. Never call it low. Report resource
+   percentages exactly as supplied; do not claim that data is absent when a
+   value is present.
+4. One unavailable feature does not prove that the physical device is offline.
+   Say which feature is unavailable. Never invent causes such as a connection
+   reset, frozen module or network failure without explicit evidence.
+5. `accepted` is not `verified`. HTTP success or a stateless button readback only
+   proves that the command was accepted. Claim physical success only for a
+   `verified` receipt whose readback matches the requested outcome.
+6. Conditional controls may be unavailable while an appliance is off. That is
+   not an incident unless the observation explicitly marks it unexpected.
+7. Never expose entity IDs, physical hashes, IP/MAC addresses or secrets in an
+   owner-facing answer. Use the human device and feature names.
+""".strip()
+
 
 class ModelRuntimePolicyError(ValueError):
     """A bounded policy validation error without prompt or endpoint data."""
@@ -190,6 +216,30 @@ def get_profile(name: str) -> RuntimeProfile:
         raise ModelRuntimePolicyError("unknown model runtime profile") from error
 
 
+def _with_grounding_lessons(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    copied: list[dict[str, Any]] = []
+    injected = False
+    for message in messages:
+        if not isinstance(message, Mapping):
+            raise ModelRuntimePolicyError("chat message is invalid")
+        role = message.get("role")
+        content = message.get("content")
+        if role not in {"system", "user", "assistant", "tool"}:
+            raise ModelRuntimePolicyError("chat message role is invalid")
+        if not isinstance(content, str):
+            raise ModelRuntimePolicyError("chat message content is invalid")
+        item = dict(message)
+        if role == "system" and not injected:
+            item["content"] = content + "\n\n" + GROUNDING_LESSONS
+            injected = True
+        copied.append(item)
+    if not injected:
+        copied.insert(0, {"role": "system", "content": GROUNDING_LESSONS})
+    return copied
+
+
 def build_chat_payload(
     profile_name: str,
     messages: Sequence[Mapping[str, Any]],
@@ -202,17 +252,7 @@ def build_chat_payload(
     turn_observability.record_policy(profile.name, profile.model, "allowed")
     if not isinstance(messages, (list, tuple)) or not messages:
         raise ModelRuntimePolicyError("chat messages are required")
-    copied_messages: list[dict[str, Any]] = []
-    for message in messages:
-        if not isinstance(message, Mapping):
-            raise ModelRuntimePolicyError("chat message is invalid")
-        role = message.get("role")
-        content = message.get("content")
-        if role not in {"system", "user", "assistant", "tool"}:
-            raise ModelRuntimePolicyError("chat message role is invalid")
-        if not isinstance(content, str):
-            raise ModelRuntimePolicyError("chat message content is invalid")
-        copied_messages.append(dict(message))
+    copied_messages = _with_grounding_lessons(messages)
 
     payload: dict[str, Any] = {
         "model": profile.model,
@@ -252,7 +292,7 @@ def build_generate_payload(
         raise ModelRuntimePolicyError("generate prompt is required")
     payload: dict[str, Any] = {
         "model": profile.model,
-        "prompt": prompt,
+        "prompt": GROUNDING_LESSONS + "\n\nCURRENT_TASK:\n" + prompt,
         "stream": False,
         "think": profile.think,
         "keep_alive": profile.keep_alive,
@@ -276,6 +316,7 @@ def trace_metadata(profile_name: str) -> dict[str, Any]:
     profile = get_profile(profile_name)
     metadata = asdict(profile)
     metadata["policy_schema_version"] = POLICY_SCHEMA_VERSION
+    metadata["grounding_lesson_version"] = 2
     return metadata
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict Home Assistant control boundary for bounded device features."""
+"""Strict Home Assistant control boundary with semantic readback receipts."""
 
 from __future__ import annotations
 
@@ -47,8 +47,15 @@ ACTION_PATHS = {
     ("select", "set_option"): "/api/services/select/select_option",
 }
 MAX_RESPONSE_BYTES = 4 * 1_048_576
-VERIFY_ATTEMPTS = 6
+VERIFY_ATTEMPTS = 8
 VERIFY_INTERVAL_SECONDS = 0.35
+VERIFY_STABLE_MATCHES = 2
+ACCEPTED_UNVERIFIED_EXIT = 0
+VACUUM_EXPECTED_STATES = {
+    "start": frozenset({"cleaning", "active", "working"}),
+    "stop": frozenset({"idle", "paused", "docked", "charging"}),
+    "return_home": frozenset({"returning", "docked", "charging"}),
+}
 
 
 class ControlError(RuntimeError):
@@ -190,6 +197,43 @@ def _find_entity(snapshot: dict[str, Any], entity_id: str) -> dict[str, Any]:
     return matches[0]
 
 
+def _matches(expected: object, observed: object, action: str) -> bool:
+    if action == "set_value" and isinstance(observed, (int, float)):
+        return math.isclose(float(observed), float(expected), rel_tol=1e-6, abs_tol=1e-6)
+    return observed == expected
+
+
+def _receipt(
+    *,
+    ok: bool,
+    status: str,
+    entity_id: str,
+    action: str,
+    value: object,
+    before: object,
+    after: object,
+    verification: str,
+    verification_strength: str,
+    delivery: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "ok": ok,
+        "status": status,
+        "entity_id": entity_id,
+        "action": action,
+        "requested_value": value,
+        "before_state": before,
+        "after_state": after,
+        "verification": verification,
+        "verification_strength": verification_strength,
+        "delivery": delivery,
+        "observed_at": _now_iso(),
+        "http_method": "POST_then_GET",
+        "service_calls": 1,
+    }
+
+
 def execute(
     entity_id: str,
     action: str,
@@ -247,70 +291,108 @@ def execute(
         service_caller(config, entity_id, action)
     else:
         service_caller(config, entity_id, action, value)
-    if domain == "button" or domain == "vacuum":
+
+    # Stateless buttons provide no physical completion signal.  A successful
+    # POST and GET is therefore an accepted-but-unverified receipt, never success.
+    if domain == "button":
         after = _find_entity(_snapshot(snapshot_reader), entity_id)
         return (
-            {
-                "schema_version": 1,
-                "ok": True,
-                "status": "accepted",
-                "entity_id": entity_id,
-                "action": action,
-                "requested_value": value,
-                "before_state": before_value,
-                "after_state": after.get("state_value"),
-                "verification": "get_readback_completed",
-                "observed_at": _now_iso(),
-                "http_method": "POST_then_GET",
-                "service_calls": 1,
-            },
-            0,
+            _receipt(
+                ok=False,
+                status="accepted_unverified",
+                entity_id=entity_id,
+                action=action,
+                value=value,
+                before=before_value,
+                after=after.get("state_value"),
+                verification="command_accepted_no_physical_proof",
+                verification_strength="transport_only",
+                delivery="accepted",
+            ),
+            ACCEPTED_UNVERIFIED_EXIT,
         )
 
-    after = before
+    # Vacuum actions have meaningful state transitions and can be verified.
+    if domain == "vacuum":
+        expected_states = VACUUM_EXPECTED_STATES[action]
+        after_value: object = before_value
+        for attempt in range(VERIFY_ATTEMPTS):
+            if attempt:
+                sleeper(VERIFY_INTERVAL_SECONDS)
+            after = _find_entity(_snapshot(snapshot_reader), entity_id)
+            after_value = after.get("state_value")
+            if str(after_value).casefold() in expected_states:
+                return (
+                    _receipt(
+                        ok=True,
+                        status="verified",
+                        entity_id=entity_id,
+                        action=action,
+                        value=value,
+                        before=before_value,
+                        after=after_value,
+                        verification="semantic_state_matches_expected",
+                        verification_strength="physical_state",
+                        delivery="confirmed",
+                    ),
+                    0,
+                )
+        return (
+            _receipt(
+                ok=False,
+                status="accepted_unverified",
+                entity_id=entity_id,
+                action=action,
+                value=value,
+                before=before_value,
+                after=after_value,
+                verification="vacuum_state_did_not_confirm_action",
+                verification_strength="transport_only",
+                delivery="accepted",
+            ),
+            ACCEPTED_UNVERIFIED_EXIT,
+        )
+
+    after_value: object = before_value
+    stable_matches = 0
     for attempt in range(VERIFY_ATTEMPTS):
         if attempt:
             sleeper(VERIFY_INTERVAL_SECONDS)
         after = _find_entity(_snapshot(snapshot_reader), entity_id)
-        observed_value = after.get("state_value")
-        matches = observed_value == expected_value
-        if action == "set_value" and isinstance(observed_value, (int, float)):
-            matches = math.isclose(
-                float(observed_value), float(expected_value), rel_tol=1e-6, abs_tol=1e-6
-            )
-        if matches:
-            return (
-                {
-                    "schema_version": 1,
-                    "ok": True,
-                    "status": "verified",
-                    "entity_id": entity_id,
-                    "action": action,
-                    "requested_value": value,
-                    "before_state": before_value,
-                    "after_state": after.get("state_value"),
-                    "verification": "state_matches_expected",
-                    "observed_at": _now_iso(),
-                    "http_method": "POST_then_GET",
-                    "service_calls": 1,
-                },
-                0,
-            )
+        after_value = after.get("state_value")
+        if _matches(expected_value, after_value, action):
+            stable_matches += 1
+            if stable_matches >= VERIFY_STABLE_MATCHES:
+                return (
+                    _receipt(
+                        ok=True,
+                        status="verified",
+                        entity_id=entity_id,
+                        action=action,
+                        value=value,
+                        before=before_value,
+                        after=after_value,
+                        verification="stable_state_matches_expected",
+                        verification_strength="state_readback",
+                        delivery="confirmed",
+                    ),
+                    0,
+                )
+        else:
+            stable_matches = 0
     return (
-        {
-            "schema_version": 1,
-            "ok": False,
-            "status": "not_verified",
-            "entity_id": entity_id,
-            "action": action,
-            "requested_value": value,
-            "before_state": before_value,
-            "after_state": after.get("state_value"),
-            "verification": "state_did_not_match_expected",
-            "observed_at": _now_iso(),
-            "http_method": "POST_then_GET",
-            "service_calls": 1,
-        },
+        _receipt(
+            ok=False,
+            status="not_verified",
+            entity_id=entity_id,
+            action=action,
+            value=value,
+            before=before_value,
+            after=after_value,
+            verification="state_did_not_stably_match_expected",
+            verification_strength="none",
+            delivery="accepted",
+        ),
         4,
     )
 
@@ -323,12 +405,8 @@ def execute_safely(
         result, exit_code = execute(entity_id, action, value)
     except (ControlError, ha_read.AdapterError) as error:
         status = error.status if isinstance(error, ControlError) else "rejected"
-        service_calls = (
-            error.service_calls if isinstance(error, ControlError) else 0
-        )
-        delivery = (
-            error.delivery if isinstance(error, ControlError) else "not_sent"
-        )
+        service_calls = error.service_calls if isinstance(error, ControlError) else 0
+        delivery = error.delivery if isinstance(error, ControlError) else "not_sent"
         result, exit_code = (
             {
                 "schema_version": 1,
@@ -341,6 +419,7 @@ def execute_safely(
                 "http_method": "POST" if service_calls else None,
                 "service_calls": service_calls,
                 "delivery": delivery,
+                "verification_strength": "none",
             },
             4 if service_calls else 3,
         )

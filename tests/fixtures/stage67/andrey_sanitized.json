@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "source": "sanitized_owner_observation_2026-08-25",
+  "display_name": "Андрей",
+  "device_type": "robot_vacuum",
+  "physical_availability": "available",
+  "features": [
+    {"human_name":"Статус","component":"main","semantic_role":"state","domain":"vacuum","availability":"available","state":{"kind":"enum","value":"charging"}},
+    {"human_name":"Battery Battery Level","component":"battery","semantic_role":"measurement","domain":"sensor","availability":"available","state":{"kind":"number","value":100.0}},
+    {"human_name":"sweep hypa-life","component":"filter","semantic_role":"maintenance","domain":"sensor","availability":"available","state":{"kind":"number","value":13.0}},
+    {"human_name":"sweep main-brush-life","component":"main_brush","semantic_role":"maintenance","domain":"sensor","availability":"available","state":{"kind":"number","value":56.0}},
+    {"human_name":"sweep mop-life","component":"mop","semantic_role":"maintenance","domain":"sensor","availability":"available","state":{"kind":"number","value":72.0}},
+    {"human_name":"sweep side-brush-life","component":"side_brush","semantic_role":"maintenance","domain":"sensor","availability":"available","state":{"kind":"number","value":13.0}},
+    {"human_name":"Условная функция один","component":"conditional_one","semantic_role":"state","domain":"sensor","availability":"unavailable","state":{"kind":"unavailable","value":null}},
+    {"human_name":"Условная функция два","component":"conditional_two","semantic_role":"state","domain":"sensor","availability":"unavailable","state":{"kind":"unavailable","value":null}}
+  ],
+  "forbidden_inferences": [
+    "robot_is_moving",
+    "full_power",
+    "battery_below_20",
+    "resource_data_absent",
+    "connection_reset",
+    "frozen_io_module",
+    "room_activity_history"
+  ]
+}

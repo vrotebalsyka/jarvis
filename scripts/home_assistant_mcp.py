@@ -201,6 +201,60 @@ def _safe_query(value: Any) -> str:
     return unicodedata.normalize("NFKC", safe).casefold()
 
 
+
+# Human-language resolver helpers. These map generic concepts, never concrete
+# entity IDs, and operate only over the existing inventory/DeviceGraph.
+TYPE_CONCEPTS = {
+    "dishwasher": frozenset({"dishwasher", "посудомойка", "посудомоечная", "дисвашер"}),
+    "light": frozenset({"light", "свет", "освещение", "лампа", "светильник"}),
+    "vacuum": frozenset({"vacuum", "robot", "робот", "пылесос"}),
+    "switch": frozenset({"switch", "реле", "выключатель", "розетка"}),
+    "media_player": frozenset({"media_player", "колонка", "станция"}),
+    "climate": frozenset({"climate", "кондиционер", "климат"}),
+    "fan": frozenset({"fan", "вентилятор"}),
+    "humidifier": frozenset({"humidifier", "увлажнитель"}),
+}
+
+_RU_ENDINGS = (
+    "ами", "ями", "ого", "ему", "ому", "ыми", "ими", "ую", "юю",
+    "ая", "яя", "ое", "ее", "ов", "ев", "ом", "ем", "ах", "ях",
+    "ам", "ям", "ы", "и", "а", "я", "у", "ю", "е",
+)
+
+def _resolver_tokens(value: str) -> list[str]:
+    return re.findall(r"[a-zа-яё0-9]+", unicodedata.normalize("NFKC", value).casefold().replace("ё", "е"))
+
+def _token_stem(value: str) -> str:
+    token = value.casefold().replace("ё", "е")
+    if len(token) < 5 or not re.search(r"[а-я]", token):
+        return token
+    for ending in _RU_ENDINGS:
+        if token.endswith(ending) and len(token) - len(ending) >= 4:
+            return token[:-len(ending)]
+    return token
+
+def _resolver_word_match(query: str, candidate: str) -> bool:
+    left = _token_stem(query)
+    right = _token_stem(candidate)
+    return left == right or (min(len(left), len(right)) >= 5 and (left.startswith(right) or right.startswith(left)))
+
+def _query_concept(token: str) -> str | None:
+    folded = token.casefold().replace("ё", "е")
+    for concept, words in TYPE_CONCEPTS.items():
+        if any(_resolver_word_match(folded, word.replace("ё", "е")) for word in words):
+            return concept
+    return None
+
+def _query_token_matches(token: str, haystack_tokens: list[str], domains: set[str]) -> bool:
+    concept = _query_concept(token)
+    if concept is not None:
+        if concept in domains:
+            return True
+        synonyms = TYPE_CONCEPTS[concept]
+        if any(any(_resolver_word_match(word, candidate) for candidate in haystack_tokens) for word in synonyms):
+            return True
+    return any(_resolver_word_match(token, candidate) for candidate in haystack_tokens)
+
 def _snapshot_index(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     entities = snapshot.get("entities")
     if not isinstance(entities, list) or len(entities) > adapter.MAX_LISTED_ENTITIES:
@@ -572,10 +626,25 @@ def find_model_devices(
         haystack = " ".join(
             value.casefold() for value in text_values if isinstance(value, str)
         )
-        if normalized_query and not all(token in haystack for token in normalized_query.split()):
+        haystack_tokens = _resolver_tokens(haystack)
+        member_domains = {
+            str(item.get("domain") or str(item.get("entity_id", "")).split(".", 1)[0])
+            for item in members
+            if isinstance(item, dict)
+        }
+        query_tokens = _resolver_tokens(normalized_query)
+        if query_tokens and not all(
+            _query_token_matches(token, haystack_tokens, member_domains)
+            for token in query_tokens
+        ):
             continue
-        if normalized_area and not all(token in " ".join(areas).casefold() for token in normalized_area.split()):
-            continue
+        if normalized_area:
+            area_tokens = _resolver_tokens(" ".join(areas))
+            if not all(
+                _query_token_matches(token, area_tokens, set())
+                for token in _resolver_tokens(normalized_area)
+            ):
+                continue
         if integration and integration not in integrations:
             continue
         matches.append({

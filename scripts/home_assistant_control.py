@@ -47,9 +47,10 @@ ACTION_PATHS = {
     ("select", "set_option"): "/api/services/select/select_option",
 }
 MAX_RESPONSE_BYTES = 4 * 1_048_576
-VERIFY_ATTEMPTS = 8
+# Reject short-lived acknowledgements (for example off -> on -> off) as success.
+VERIFY_ATTEMPTS = 12
 VERIFY_INTERVAL_SECONDS = 0.35
-VERIFY_STABLE_MATCHES = 2
+VERIFY_STABLE_MATCHES = 5
 ACCEPTED_UNVERIFIED_EXIT = 0
 VACUUM_EXPECTED_STATES = {
     "start": frozenset({"cleaning", "active", "working"}),

@@ -824,6 +824,37 @@ def _read_onboarding_queue() -> dict[str, Any]:
         raise BoundedAgentError("device onboarding queue is unavailable") from error
 
 
+
+def _filter_action_capabilities_for_owner(
+    capabilities: list[dict[str, Any]], intent: OwnerIntent
+) -> list[dict[str, Any]]:
+    # Keep only the action explicitly requested by the owner, then prefer a
+    # single primary power/main-control feature for device-level on/off.
+    requested = (intent.requested_action or "").casefold()
+    if "включ" in requested or "turn on" in requested:
+        action_id = "turn_on"
+    elif "выключ" in requested or "turn off" in requested:
+        action_id = "turn_off"
+    elif "верн" in requested or "return" in requested:
+        action_id = "return_home"
+    elif "останов" in requested or "stop" in requested:
+        action_id = "stop"
+    elif "запуст" in requested or "start" in requested:
+        action_id = "start"
+    else:
+        return capabilities
+    matching = [item for item in capabilities if item.get("action_id") == action_id]
+    if not matching:
+        return capabilities
+    if action_id not in {"turn_on", "turn_off"}:
+        return matching
+    primary = [
+        item for item in matching
+        if any(marker in str(item.get("feature_name", "")).casefold()
+               for marker in ("питание", "power", "основное управление", "main power"))
+    ]
+    return primary if len(primary) == 1 else matching
+
 def _execute_tool(
     call: Mapping[str, Any],
     state: LoopState,
@@ -894,11 +925,18 @@ def _execute_tool(
             document, state.inventory
         )
         result = catalogue.model_view(physical_id)
+        raw_capabilities = [
+            item for item in result.get("capabilities", []) if isinstance(item, dict)
+        ]
+        filtered = _filter_action_capabilities_for_owner(raw_capabilities, state.intent)
+        result = dict(result)
+        result["capabilities"] = filtered
+        result["capability_count"] = len(filtered)
         state.capability_catalogue = catalogue
         state.focused_device_id = physical_id
         state.allowed_capability_ids = {
-            item["capability_id"] for item in result["capabilities"]
-            if isinstance(item, dict) and isinstance(item.get("capability_id"), str)
+            item["capability_id"] for item in filtered
+            if isinstance(item.get("capability_id"), str)
         }
     elif name == "ha_get_onboarding_queue":
         if arguments or state.intent.kind != "ha_read":
@@ -975,11 +1013,11 @@ def _execute_tool(
                 executed.append(step_result)
                 if (
                     step_result.get("exit_code") != 0
-                    or step_result.get("adapter_status") not in {"verified", "accepted"}
+                    or step_result.get("adapter_status") != "verified"
                 ):
                     break
             complete = len(executed) == len(normalized_steps) and all(
-                item.get("adapter_status") in {"verified", "accepted"}
+                item.get("adapter_status") == "verified"
                 for item in executed
             )
             result = {
@@ -1067,11 +1105,13 @@ def _validate_final(content: object, state: LoopState, *, voice: bool) -> str:
             raise BoundedAgentError("model hid the separate confirmation boundary")
         if status == "confirmation_required":
             raise BoundedAgentError("use deterministic separate-confirmation prompt")
-        if service_calls and status not in {"verified", "accepted"} and not any(
-            phrase in folded for phrase in ("не подтверд", "неизвест", "перепровер")
+        if service_calls and status != "verified" and not any(
+            phrase in folded for phrase in ("не подтверд", "неизвест", "не выполн", "не удалось")
         ):
             raise BoundedAgentError("model hid failed action verification")
-        if status in {"verified", "accepted"} and any(
+        if status != "verified" and model_ha_proof.SUCCESS_WORD_RE.search(answer):
+            raise BoundedAgentError("model claimed success without verified action")
+        if status == "verified" and any(
             phrase in folded for phrase in ("не выполнял", "не отправлял", "не сделал")
         ):
             raise BoundedAgentError("model contradicted the verified action result")
@@ -1088,8 +1128,11 @@ def _fallback(state: LoopState) -> str:
             return f"Для действия «{feature}» у {device} нужно отдельное подтверждение. Ничего не менял."
         if status == "verified":
             return f"Готово: {device}, функция «{feature}». Home Assistant подтвердил результат повторным чтением."
-        if status == "accepted":
-            return f"Команда для {device}, функция «{feature}», принята; повторное чтение выполнено."
+        if status in {"accepted", "accepted_unverified", "partially_verified"}:
+            return (
+                f"Команда для {device}, функция «{feature}», принята, но физический "
+                "результат не подтверждён. Автоматически не повторяю."
+            )
         if action.get("service_calls"):
             return f"Команда для {device} отправлена, но результат не подтверждён. Автоматически не повторяю."
         return f"Команда для {device} не выполнена; изменений не подтверждено."
@@ -1151,12 +1194,8 @@ def _prefetch_read_device(
     physical_id = devices[0].get("physical_device_id") if isinstance(devices[0], dict) else None
     if not isinstance(physical_id, str):
         return None
-    # The fast voice route is intentionally limited to already validated
-    # DeviceKnowledgeProfiles. Unknown devices keep the normal bounded tool loop.
-    try:
-        device_learning.load_profile(physical_id)
-    except device_learning.LearningError:
-        return None
+    # A real HA device must remain readable even before it has a learned profile.
+    # Learning is a semantic overlay, never an authorization gate for current facts.
     state.seen_device_ids.add(physical_id)
     state.focused_device_id = physical_id
     call = {

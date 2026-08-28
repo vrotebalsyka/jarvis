@@ -193,6 +193,18 @@ def _verification_method(domain: str) -> str:
     return "stable_state_matches_expected"
 
 
+
+def _canonical_adapter_status(result: Mapping[str, Any]) -> str:
+    # Transport acceptance is never physical proof.
+    status = str(result.get("status") or "unknown")
+    strength = str(result.get("verification_strength") or "none")
+    if status == "accepted":
+        return "accepted_unverified"
+    if status == "verified" and strength not in {"state_readback", "physical_state"}:
+        return "accepted_unverified"
+    return status
+
+
 class CapabilityCatalog:
     """Private mapping from opaque action IDs to the existing control adapter."""
 
@@ -317,7 +329,7 @@ class CapabilityCatalog:
             "feature_name": capability.feature_name,
             "action_id": capability.action_id,
             "risk_class": capability.risk_class,
-            "adapter_status": result.get("status"),
+            "adapter_status": _canonical_adapter_status(result),
             "verification": result.get("verification"),
             "verification_strength": result.get("verification_strength", "none"),
             "before_state": result.get("before_state"),

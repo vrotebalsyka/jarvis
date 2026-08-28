@@ -208,14 +208,13 @@ def parse_document(raw: bytes) -> dict[str, Any]:
 
 
 def normalize_device_query(value: object) -> str:
-    """Reduce common Russian case forms without inventing a device identity."""
+    # Normalize conversational wrappers while preserving names, rooms and types.
     if not isinstance(value, str):
         raise ProofError("device query is invalid")
     text = " ".join(value.strip().split())
     if not text:
         raise ProofError("device query is empty")
-    # The real HA registry contains the proper name Андрей.  Russian case forms
-    # previously caused exact substring search to miss it.
+
     match = re.search(r"\bандре(?:й|я|ю|ем|е)\b", text, flags=re.IGNORECASE)
     if match is not None:
         replaced = text[:match.start()] + "Андрей" + text[match.end():]
@@ -224,13 +223,20 @@ def normalize_device_query(value: object) -> str:
             token for token in tokens
             if token.casefold() not in DEVICE_QUERY_STOPWORDS
         ]
-        # Normal questions collapse to the exact registry name.  Corrections or
-        # multi-device phrases keep their extra meaningful words and therefore
-        # fail closed instead of silently choosing Андрей.
         return " ".join(selected)[:120] if selected else "Андрей"
-    # Other device names are left intact. The resolver may use type/area words,
-    # and stripping them here would turn e.g. "новые устройства" into "новые".
-    return text[:120]
+
+    # Keep type words such as свет/посудомойка/пылесос. The semantic resolver
+    # uses them to disambiguate a room containing several physical devices.
+    tokens = re.findall(r"[A-Za-zА-Яа-яЁё0-9_-]+", text)
+    selected = [
+        token for token in tokens
+        if len(token) >= 3
+        and (
+            token.casefold() not in DEVICE_QUERY_STOPWORDS | {"для", "при", "над", "под"}
+            or token.casefold() in {"робот", "пылесос"}
+        )
+    ]
+    return " ".join(selected)[:120] if selected else text[:120]
 
 
 def _payload_messages(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -457,7 +463,12 @@ def render_device_observation(result: Mapping[str, Any], current_user: str = "")
     ]
     unavailable = [item for item in features if not _feature_available(item)]
 
-    if any(marker in folded_question for marker in ("батар", "заряд")) and battery is not None:
+    battery_requested = any(marker in folded_question for marker in ("батар", "заряд"))
+    multi_fact_request = any(
+        marker in folded_question
+        for marker in ("что сейчас делает", "где", "что с ", "как там", "состояние", "статус")
+    )
+    if battery_requested and not multi_fact_request and battery is not None:
         value = _feature_value(battery)
         if value is None:
             return f"{name}: значение заряда сейчас не передано Home Assistant."
@@ -477,10 +488,51 @@ def render_device_observation(result: Mapping[str, Any], current_user: str = "")
     if requested_maintenance is not None:
         label = _feature_label(requested_maintenance)
         value = _feature_value(requested_maintenance)
-        availability = "доступен" if _feature_available(requested_maintenance) else "недоступен"
-        return f"{name}: {label} — {_human_value(value)}%, объект {availability}."
+        if not _feature_available(requested_maintenance):
+            return (
+                f"{name}: {label} сейчас недоступен. "
+                "Причина по текущим данным не подтверждена."
+            )
+        if value is None:
+            return f"{name}: {label} доступен, но текущее значение не передано Home Assistant."
+        return f"{name}: {label} — {_human_value(value)}%."
+
+    # Generic current-state rendering for devices that do not yet have a
+    # learned profile. It selects a live HA feature related to the user's words.
+    query_tokens = [
+        token for token in re.findall(r"[a-zа-яё0-9]+", folded_question)
+        if len(token) >= 3 and token not in DEVICE_QUERY_STOPWORDS
+    ]
+    scored: list[tuple[int, Mapping[str, Any]]] = []
+    for item in features:
+        searchable = _feature_text(item)
+        score = sum(1 for token in query_tokens if token in searchable)
+        if score:
+            scored.append((score, item))
+    if scored and not multi_fact_request:
+        scored.sort(key=lambda pair: -pair[0])
+        specific = scored[0][1]
+        label = _feature_label(specific)
+        if not _feature_available(specific):
+            return (
+                f"{name}: функция «{label}» сейчас недоступна. "
+                "Причина по текущим данным не подтверждена."
+            )
+        value = _feature_value(specific)
+        if value is not None:
+            if isinstance(value, (int, float)):
+                measurement = specific.get("measurement_type")
+                unit = measurement.get("unit") if isinstance(measurement, Mapping) else None
+                suffix = str(unit) if isinstance(unit, str) and unit else ""
+                return f"{name}: {label} — {_human_value(value)}{suffix}."
+            return f"{name}: {label} — {_state_phrase(value)}."
 
     parts: list[str] = []
+    areas = result.get("areas")
+    if "где" in folded_question and isinstance(areas, list):
+        safe_areas = [str(value) for value in areas if isinstance(value, str) and value.strip()]
+        if safe_areas:
+            parts.append("зона " + ", ".join(safe_areas[:2]))
     if primary is not None and _feature_available(primary):
         parts.append(_state_phrase(_feature_value(primary)))
     elif result.get("physical_availability") == "available":

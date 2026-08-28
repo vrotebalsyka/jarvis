@@ -27,25 +27,32 @@ REQUIRED_PROFILES = frozenset(
 # the final authority over facts and actions.  The examples come from verified
 # owner feedback and sanitized Home Assistant observations.
 GROUNDING_LESSONS = """
-HOME_BUTLER_VERIFIED_LESSONS_V2:
-1. TOOL_RESULT is the only source of current Home Assistant facts. Never replace
-   its values with assumptions, prior knowledge or a plausible story.
+HOME_BUTLER_VERIFIED_LESSONS_V3:
+1. TOOL_RESULT is the only source of CURRENT Home Assistant facts. Learned
+   profiles describe semantics only; never reuse an old state/value/availability
+   as if it were current.
 2. State `charging` or `docked` means the robot is at/on its dock; it does not
    prove movement or active cleaning. State `active` must be reported literally
    unless another verified field explains it.
-3. A battery value of 100 means 100 percent. Never call it low. Report resource
-   percentages exactly as supplied; do not claim that data is absent when a
-   value is present.
+3. Numeric values must be copied from the current tool result. Never replace
+   100% with "low", and never say data is absent when a current value exists.
 4. One unavailable feature does not prove that the physical device is offline.
-   Say which feature is unavailable. Never invent causes such as a connection
-   reset, frozen module or network failure without explicit evidence.
-5. `accepted` is not `verified`. HTTP success or a stateless button readback only
-   proves that the command was accepted. Claim physical success only for a
-   `verified` receipt whose readback matches the requested outcome.
+   Never invent OR deny a cause such as Wi-Fi, server, integration, reset or
+   frozen module without explicit current evidence.
+5. `accepted` is NEVER `verified`. Only a verified receipt may be phrased as
+   "включил", "выключил", "запустил", "готово" or another physical success.
 6. Conditional controls may be unavailable while an appliance is off. That is
-   not an incident unless the observation explicitly marks it unexpected.
-7. Never expose entity IDs, physical hashes, IP/MAC addresses or secrets in an
-   owner-facing answer. Use the human device and feature names.
+   not an incident unless the current observation marks it unexpected.
+7. Resolve owner language semantically. Preserve specific names and rooms while
+   treating common type words as concepts: посудомойка~dishwasher,
+   свет/освещение~light, робот/пылесос~vacuum, колонка~media_player.
+8. A missing literal search result is not proof that a device is absent. Search
+   registry names, aliases, friendly names and areas before saying not found.
+9. A device-level on/off request should use a unique primary power/main control
+   when one exists. Never choose Storage, half-load or another secondary feature
+   instead of power.
+10. Never expose entity IDs, physical hashes, IP/MAC addresses or secrets in an
+    owner-facing answer. Use human device and feature names.
 """.strip()
 
 
@@ -316,7 +323,7 @@ def trace_metadata(profile_name: str) -> dict[str, Any]:
     profile = get_profile(profile_name)
     metadata = asdict(profile)
     metadata["policy_schema_version"] = POLICY_SCHEMA_VERSION
-    metadata["grounding_lesson_version"] = 2
+    metadata["grounding_lesson_version"] = 3
     return metadata
 
 

@@ -1,0 +1,146 @@
+{
+  "alice_e2e": {
+    "checks": [
+      {
+        "answer": "Андрей сейчас на зарядке.",
+        "deferred": false,
+        "latency_seconds": 3.697,
+        "pass": true,
+        "question": "Что с роботом Андреем?",
+        "reasons": []
+      },
+      {
+        "answer": "Андрей, батарея на 100%. Робот сейчас заряжается.",
+        "deferred": false,
+        "latency_seconds": 3.973,
+        "pass": true,
+        "question": "А батарея?",
+        "reasons": []
+      }
+    ],
+    "coreference_followup_pass": true,
+    "direct_response_count": 2,
+    "initial_question_pass": true,
+    "maximum_latency_seconds": 3.973,
+    "trace_evidence": {
+      "action_record_count": 0,
+      "forbidden_tools": [],
+      "model_call_count": 2,
+      "model_latency_ms": [
+        3468,
+        3711
+      ],
+      "tool_names": [
+        "ha_find_devices",
+        "ha_get_device_details",
+        "ha_read.snapshot"
+      ],
+      "trace_count": 2
+    },
+    "yandex_json": true
+  },
+  "checks": [
+    {
+      "answer": "Андрей сейчас на зарядке.",
+      "deferred": false,
+      "latency_seconds": 3.745,
+      "pass": true,
+      "question": "Что с Андреем?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "Андрей сейчас на зарядке.",
+      "deferred": false,
+      "latency_seconds": 3.796,
+      "pass": true,
+      "question": "Как там Андрей?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "У Андрея батарея на 100%. Робот сейчас заряжается.",
+      "deferred": false,
+      "latency_seconds": 4.0,
+      "pass": true,
+      "question": "Сколько у Андрея батареи?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "Андрей: ресурс фильтра — 12%.",
+      "deferred": true,
+      "latency_seconds": 4.669,
+      "pass": true,
+      "question": "Что с фильтром?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "Основная щётка имеет 56% ресурса. Робот сейчас на зарядке.",
+      "deferred": false,
+      "latency_seconds": 1.366,
+      "pass": true,
+      "question": "Что с основной щёткой?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "Андрей: ресурс боковой щётки — 12%.",
+      "deferred": false,
+      "latency_seconds": 2.073,
+      "pass": true,
+      "question": "Что с боковой щёткой?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "Само устройство «Андрей» доступно. Недоступны 2 отдельные функции; причина по текущим данным не подтверждена.",
+      "deferred": false,
+      "latency_seconds": 1.799,
+      "pass": true,
+      "question": "Какие проблемы у Андрея?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    },
+    {
+      "answer": "Само устройство «Андрей» доступно. Недоступны 2 отдельные функции; причина по текущим данным не подтверждена.",
+      "deferred": false,
+      "latency_seconds": 1.959,
+      "pass": true,
+      "question": "Почему функция недоступна?",
+      "reasons": [],
+      "relevant_feature_count": 3
+    }
+  ],
+  "device_name": "Андрей",
+  "observed_at": "2026-08-28T02:40:51+00:00",
+  "passed_count": 8,
+  "question_count": 8,
+  "read_only": true,
+  "schema_version": 1,
+  "service_calls": 0,
+  "stage": 68,
+  "status": "pass",
+  "trace_evidence": {
+    "action_record_count": 0,
+    "forbidden_tools": [],
+    "model_call_count": 8,
+    "model_latency_ms": [
+      3410,
+      3371,
+      3729,
+      3991,
+      1114,
+      1831,
+      1566,
+      1679
+    ],
+    "tool_names": [
+      "ha_find_devices",
+      "ha_get_device_details",
+      "ha_read.snapshot"
+    ],
+    "trace_count": 9
+  }
+}

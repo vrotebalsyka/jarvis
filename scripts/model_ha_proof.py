@@ -413,23 +413,40 @@ def render_device_observation(result: Mapping[str, Any], current_user: str = "")
     features = [item for item in raw_features or [] if isinstance(item, Mapping)]
     folded_question = current_user.casefold()
 
+    # A command such as ``battery-start_charge`` is not a battery reading.
+    # Prefer a numeric measurement so a button timestamp can never become a
+    # percentage in a user-facing answer.
     battery = next(
         (
             item for item in features
-            if "battery" in _feature_text(item) or "батар" in _feature_text(item)
+            if ("battery" in _feature_text(item) or "батар" in _feature_text(item))
+            and item.get("domain") != "button"
+            and isinstance(_feature_value(item), (int, float))
         ),
         None,
     )
+    # The reviewed status sensor is more specific than the generic vacuum
+    # control entity. Fall back to that entity only when no status fact exists.
     primary = next(
         (
             item for item in features
-            if item.get("domain") == "vacuum"
-            or str(item.get("component", "")).casefold() in {
-                "main", "main_robot", "vacuum", "status"
-            }
+            if item.get("domain") != "button"
+            and "status" in str(item.get("component", "")).casefold()
+            and _feature_value(item) is not None
         ),
         None,
     )
+    if primary is None:
+        primary = next(
+            (
+                item for item in features
+                if item.get("domain") == "vacuum"
+                or str(item.get("component", "")).casefold() in {
+                    "main", "main_robot", "vacuum"
+                }
+            ),
+            None,
+        )
     maintenance = [
         item for item in features
         if item.get("semantic_role") in {"maintenance", "consumable"}

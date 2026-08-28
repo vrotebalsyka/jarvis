@@ -210,6 +210,101 @@ class BoundedHaAgentTests(unittest.TestCase):
         }
         self.assertNotIn("ha_get_snapshot", exposed_tools)
 
+    def test_registry_fast_read_resolves_cases_and_followup_but_never_action(self) -> None:
+        direct = agent.resolve_obvious_read_intent(
+            "Что с роботом Андреем?", [], inventory()
+        )
+        self.assertEqual(direct, agent.OwnerIntent(
+            "ha_read", "Андрей", None, None, False
+        ))
+        followup = agent.resolve_obvious_read_intent(
+            "А батарея?",
+            [{"role": "user", "content": "Что с роботом Андреем?"}],
+            inventory(),
+        )
+        self.assertEqual(followup, agent.OwnerIntent(
+            "ha_read", "Андрей", None, None, True
+        ))
+        self.assertIsNone(agent.resolve_obvious_read_intent(
+            "Верни Андрея на базу", [], inventory()
+        ))
+
+    def test_validated_profile_is_prefetched_before_single_model_answer(self) -> None:
+        model = ScriptedModel([{
+            "message": {"content": "Андрей находится на базе. Заряд 80 процентов."}
+        }])
+        compact = {
+            "schema_version": 1,
+            "source": "learned profile plus current read-only HA facts",
+            "display_name": "Андрей",
+            "relevant_features": [{
+                "human_name": "Батарея",
+                "component": "battery",
+                "state_kind": "number",
+                "state_value": 80.0,
+                "available": True,
+            }],
+        }
+        with (
+            mock.patch.object(agent.device_learning, "load_profile", return_value={}),
+            mock.patch.object(agent.device_learning, "compact_profile", return_value=compact),
+        ):
+            result = agent.run_tool_loop(
+                "Что с роботом Андреем?", {}, [],
+                agent.OwnerIntent("ha_read", "Андрей", None, None, False),
+                **self.dependencies(model),
+            )
+        self.assertIn("80", result)
+        self.assertEqual(len(model.payloads), 1)
+        self.assertNotIn("tools", model.payloads[0])
+        tool_messages = [
+            item for item in model.payloads[0]["messages"]
+            if item.get("role") == "tool"
+        ]
+        self.assertEqual(len(tool_messages), 1)
+        self.assertIn("learned profile plus current", tool_messages[0]["content"])
+
+    def test_prefetched_read_rejects_state_hallucination_and_uses_grounded_fallback(self) -> None:
+        model = ScriptedModel([{
+            "message": {"content": "Андрей едет по дому и убирает."}
+        }])
+        compact = {
+            "schema_version": 1,
+            "source": "learned profile plus current read-only HA facts",
+            "display_name": "Андрей",
+            "physical_availability": "available",
+            "available_feature_count": 2,
+            "unavailable_feature_count": 0,
+            "relevant_features": [
+                {
+                    "human_name": "Статус", "component": "main_status",
+                    "semantic_role": "status", "availability": "available",
+                    "state": {"kind": "enum", "value": "charging"},
+                },
+                {
+                    "human_name": "Батарея", "component": "battery",
+                    "semantic_role": "battery", "availability": "available",
+                    "state": {"kind": "number", "value": 80.0},
+                },
+                {
+                    "human_name": "Док", "component": "dock",
+                    "semantic_role": "dock", "availability": "available",
+                    "state": {"kind": "enum", "value": "docked"},
+                },
+            ],
+        }
+        with (
+            mock.patch.object(agent.device_learning, "load_profile", return_value={}),
+            mock.patch.object(agent.device_learning, "compact_profile", return_value=compact),
+        ):
+            result = agent.run_tool_loop(
+                "Что с Андреем?", {}, [],
+                agent.OwnerIntent("ha_read", "Андрей", None, None, False),
+                **self.dependencies(model),
+            )
+        self.assertIn("док-станции", result)
+        self.assertNotIn("убирает", result)
+
     def test_new_device_question_uses_sanitized_onboarding_queue(self) -> None:
         model = ScriptedModel([
             tool_call("ha_get_onboarding_queue", {}),

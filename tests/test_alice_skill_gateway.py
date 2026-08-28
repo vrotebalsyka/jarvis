@@ -608,6 +608,21 @@ class AliceSkillGatewayTests(unittest.TestCase):
         self.assertEqual(disposition, "completed")
         self.assertIn("Ответ модели", response["response"]["text"])
 
+    def test_deferred_status_does_not_wait_for_the_busy_session_lock(self) -> None:
+        deferred = mock.Mock()
+        deferred.status_response.return_value = "Задача abcdef12 ещё выполняется."
+        self.application.deferred = deferred
+        record = self.application.sessions.get(SESSION_ID, True)
+        record.lock.acquire()
+        try:
+            response, route = self.application.process(
+                request("статус задачи abcdef12", message_id=13)
+            )
+        finally:
+            record.lock.release()
+        self.assertEqual(route, "deferred_status")
+        self.assertIn("abcdef12", response["response"]["text"])
+
     def test_deferred_control_never_claims_that_the_action_succeeded(self) -> None:
         message = gateway.deadline_message("home_assistant_control")
         self.assertIn("проверяю результат", message)

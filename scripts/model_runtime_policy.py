@@ -112,7 +112,7 @@ PROFILES: Mapping[str, RuntimeProfile] = MappingProxyType(
             "24h",
             60.0,
             2,
-            3.2,
+            4.0,
             "verified_fallback",
         ),
         "dialogue": _profile(

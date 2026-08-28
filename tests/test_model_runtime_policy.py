@@ -47,7 +47,7 @@ class ModelRuntimePolicyTests(unittest.TestCase):
 
     def test_voice_worker_can_finish_after_yandex_has_deferred_the_reply(self) -> None:
         voice = policy.get_profile("voice_fast")
-        self.assertEqual(voice.latency_budget_seconds, 3.2)
+        self.assertEqual(voice.latency_budget_seconds, 4.0)
         self.assertGreaterEqual(voice.request_timeout_seconds, 60.0)
 
     def test_chat_payload_comes_only_from_selected_profile(self) -> None:

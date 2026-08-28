@@ -15,6 +15,7 @@ sys.dont_write_bytecode = True
 
 import capability_catalog
 import behavior_preferences
+import device_learning
 import device_onboarding
 import ha_entity_query
 import home_assistant_control
@@ -56,6 +57,17 @@ ONBOARDING_CONFIRMATION_RE = re.compile(
 )
 PENDING_R3_PREFIX = "Для действия «"
 PENDING_R3_MARKER = "нужно отдельное подтверждение. Ничего не менял."
+READ_QUESTION_RE = re.compile(
+    r"^\s*(?:а\s+)?(?:что|как|сколько|каков(?:а|о|ы)?|какой|какая|какие|"
+    r"почему|где|есть\s+ли|доступ(?:ен|на|но|ны)\s+ли|работает\s+ли)\b",
+    re.IGNORECASE,
+)
+DEVICE_TOKEN_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9_-]{3,64}")
+DEVICE_TOKEN_STOPWORDS = frozenset({
+    "батарея", "батареи", "доступен", "доступна", "доступно", "доступны",
+    "какая", "какие", "какой", "находится", "основная", "почему", "проблемы",
+    "работает", "сколько", "состояние", "статус", "функция",
+}) | model_ha_proof.DEVICE_QUERY_STOPWORDS
 
 INTENT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -93,6 +105,8 @@ class OwnerIntent:
 class LoopState:
     inventory: dict[str, Any]
     intent: OwnerIntent
+    question: str = ""
+    voice: bool = False
     seen_device_ids: set[str] = field(default_factory=set)
     focused_device_id: str | None = None
     capability_catalogue: capability_catalog.CapabilityCatalog | None = None
@@ -100,6 +114,71 @@ class LoopState:
     tool_results: list[dict[str, Any]] = field(default_factory=list)
     action_result: dict[str, Any] | None = None
     action_attempted: bool = False
+
+
+def _looks_like_read_question(question: str) -> bool:
+    """Recognize only obviously read-only language; ambiguity stays on the LLM path."""
+    if not isinstance(question, str) or not question.strip():
+        return False
+    if model_ha_proof.ACTION_RE.search(question) is not None:
+        return False
+    return "?" in question or READ_QUESTION_RE.search(question) is not None
+
+
+def _unique_device_from_text(
+    inventory: Mapping[str, Any], text: str
+) -> tuple[str, str] | None:
+    """Resolve a registry-backed device without embedding per-device aliases."""
+    if not isinstance(inventory, dict) or not isinstance(text, str):
+        return None
+    candidates: dict[str, str] = {}
+    seen_queries: set[str] = set()
+    for token in DEVICE_TOKEN_RE.findall(text)[:32]:
+        if token.casefold() in DEVICE_TOKEN_STOPWORDS:
+            continue
+        try:
+            query = model_ha_proof.normalize_device_query(token)
+            query_key = query.casefold()
+            if query_key in DEVICE_TOKEN_STOPWORDS or query_key in seen_queries:
+                continue
+            seen_queries.add(query_key)
+            result = home_assistant_mcp.find_model_devices(
+                inventory, query=query, limit=2
+            )
+        except (model_ha_proof.ProofError, TypeError, ValueError):
+            continue
+        devices = result.get("devices")
+        if result.get("matched_device_count") != 1 or not isinstance(devices, list):
+            continue
+        item = devices[0] if len(devices) == 1 else None
+        physical_id = item.get("physical_device_id") if isinstance(item, dict) else None
+        display_name = item.get("display_name") if isinstance(item, dict) else None
+        if isinstance(physical_id, str) and isinstance(display_name, str):
+            candidates[physical_id] = display_name
+    if len(candidates) != 1:
+        return None
+    physical_id, display_name = next(iter(candidates.items()))
+    return physical_id, display_name
+
+
+def resolve_obvious_read_intent(
+    question: str,
+    history: Sequence[Mapping[str, str]],
+    inventory: Mapping[str, Any],
+) -> OwnerIntent | None:
+    """Fast, read-only route backed by DeviceGraph; never authorizes an action."""
+    if not _looks_like_read_question(question):
+        return None
+    current = _unique_device_from_text(inventory, question)
+    if current is not None:
+        return OwnerIntent("ha_read", current[1], None, None, False)
+    for item in reversed(history[-8:]):
+        if item.get("role") != "user" or not isinstance(item.get("content"), str):
+            continue
+        previous = _unique_device_from_text(inventory, str(item["content"]))
+        if previous is not None:
+            return OwnerIntent("ha_read", previous[1], None, None, True)
+    return None
 
 
 def _safe_memory_context(context: Mapping[str, Any]) -> dict[str, Any]:
@@ -785,9 +864,18 @@ def _execute_tool(
                 state.focused_device_id = next(iter(returned))
     elif name == "ha_get_device_details":
         physical_id = _validate_physical_id(arguments, state)
-        result = home_assistant_mcp.get_model_device_details(
+        live_details = home_assistant_mcp.get_model_device_details(
             _snapshot(snapshot_reader), state.inventory, physical_id
         )
+        try:
+            result = device_learning.compact_profile(
+                device_learning.load_profile(physical_id),
+                live_details,
+                state.question,
+                maximum=3 if state.voice else 8,
+            )
+        except device_learning.LearningError:
+            result = live_details
         state.focused_device_id = physical_id
     elif name == "ha_get_device_diagnostics":
         physical_id = _validate_physical_id(arguments, state)
@@ -964,6 +1052,11 @@ def _validate_final(content: object, state: LoopState, *, voice: bool) -> str:
     }
     if not answer_numbers <= _allowed_numbers(state):
         raise BoundedAgentError("model invented numeric HA facts")
+    for result in reversed(state.tool_results):
+        if result.get("source") == "learned profile plus current read-only HA facts":
+            if device_learning.validate_compact_answer(result, state.question, answer):
+                raise BoundedAgentError("model distorted compact HA facts")
+            break
     action = state.action_result
     if action is not None:
         status = action.get("adapter_status") or action.get("status")
@@ -1001,6 +1094,11 @@ def _fallback(state: LoopState) -> str:
             return f"Команда для {device} отправлена, но результат не подтверждён. Автоматически не повторяю."
         return f"Команда для {device} не выполнена; изменений не подтверждено."
     for result in reversed(state.tool_results):
+        if (
+            result.get("source") == "learned profile plus current read-only HA facts"
+            and isinstance(result.get("relevant_features"), list)
+        ):
+            return device_learning.render_compact_observation(result, state.question)
         if isinstance(result.get("display_name"), str):
             device = result["display_name"]
             available = result.get("available_feature_count")
@@ -1019,6 +1117,82 @@ def _fallback(state: LoopState) -> str:
                 ]
                 return "Нашёл несколько устройств: " + ", ".join(names) + ". Уточните одно название."
     return "Не смог получить достаточно проверенных данных Home Assistant. Ничего не менял."
+
+
+def _prefetch_read_device(
+    state: LoopState,
+    *,
+    snapshot_reader: Callable[[str], tuple[dict[str, Any], int]],
+    control_catalogue_reader: Callable[[str], tuple[dict[str, Any], int]],
+    control_executor: Callable[..., tuple[dict[str, Any], int]],
+    onboarding_reader: Callable[[], dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Resolve and read one device before the LLM; this path can never act."""
+    if state.intent.kind != "ha_read" or not state.intent.device_query:
+        return None
+    started = time.monotonic()
+    try:
+        found = home_assistant_mcp.find_model_devices(
+            state.inventory,
+            query=model_ha_proof.normalize_device_query(state.intent.device_query),
+            limit=2,
+        )
+    except (model_ha_proof.ProofError, TypeError, ValueError):
+        return None
+    turn_observability.record_tool_call(
+        "ha_find_devices",
+        latency_ms=round((time.monotonic() - started) * 1000),
+        policy_result="allowed",
+        result_status="completed",
+    )
+    devices = found.get("devices")
+    if found.get("matched_device_count") != 1 or not isinstance(devices, list) or len(devices) != 1:
+        return None
+    physical_id = devices[0].get("physical_device_id") if isinstance(devices[0], dict) else None
+    if not isinstance(physical_id, str):
+        return None
+    # The fast voice route is intentionally limited to already validated
+    # DeviceKnowledgeProfiles. Unknown devices keep the normal bounded tool loop.
+    try:
+        device_learning.load_profile(physical_id)
+    except device_learning.LearningError:
+        return None
+    state.seen_device_ids.add(physical_id)
+    state.focused_device_id = physical_id
+    call = {
+        "function": {
+            "name": "ha_get_device_details",
+            "arguments": {"physical_device_hash": physical_id},
+        }
+    }
+    started = time.monotonic()
+    try:
+        tool_name, result = _execute_tool(
+            call,
+            state,
+            snapshot_reader=snapshot_reader,
+            control_catalogue_reader=control_catalogue_reader,
+            control_executor=control_executor,
+            onboarding_reader=onboarding_reader,
+        )
+    except (
+        BoundedAgentError,
+        capability_catalog.CapabilityCatalogError,
+        ha_entity_query.EntityQueryError,
+        TypeError,
+        ValueError,
+    ):
+        state.seen_device_ids.clear()
+        state.focused_device_id = None
+        state.tool_results.clear()
+        return None
+    turn_observability.record_tool_call(
+        tool_name,
+        latency_ms=round((time.monotonic() - started) * 1000),
+        policy_result="allowed",
+        result_status=result.get("status", "completed"),
+    )
+    return call, result
 
 
 def run_tool_loop(
@@ -1045,7 +1219,9 @@ def run_tool_loop(
     inventory = inventory_loader()
     if not isinstance(inventory, dict):
         raise BoundedAgentError("device inventory is unavailable")
-    state = LoopState(inventory=inventory, intent=intent)
+    state = LoopState(
+        inventory=inventory, intent=intent, question=question, voice=voice
+    )
     safe_history = [
         {"role": item.get("role"), "content": item.get("content")}
         for item in history[-8:]
@@ -1087,6 +1263,35 @@ def run_tool_loop(
     action_calls = 0
     final_retries = 0
     force_final = False
+    prefetched_read = _prefetch_read_device(
+        state,
+        snapshot_reader=snapshot_reader,
+        control_catalogue_reader=control_catalogue_reader,
+        control_executor=control_executor,
+        onboarding_reader=onboarding_reader,
+    )
+    if prefetched_read is not None:
+        tool_call, result = prefetched_read
+        read_calls = 1
+        force_final = True
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Ты Home Butler. Ответь владельцу кратко и естественно только "
+                    "по текущему TOOL_RESULT. Не показывай технические ID, не "
+                    "выдумывай причины, состояния или числа. Частичная "
+                    "недоступность функции не означает поломку всего устройства."
+                ),
+            },
+            {"role": "user", "content": "CURRENT_USER=" + question.strip()},
+            {"role": "assistant", "content": "", "tool_calls": [tool_call]},
+            {
+                "role": "tool",
+                "tool_name": "ha_get_device_details",
+                "content": json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+            },
+        ]
     # max_tool_iterations bounds read tools. One separately authorized action
     # plus a final response and at most one formatting/fact correction may follow.
     maximum_rounds = profile.max_tool_iterations + 3
@@ -1117,6 +1322,8 @@ def run_tool_loop(
                 try:
                     return _validate_final(content, state, voice=voice)
                 except BoundedAgentError:
+                    if prefetched_read is not None:
+                        return _fallback(state)
                     if final_retries >= 1:
                         return _fallback(state)
                     final_retries += 1
@@ -1206,21 +1413,33 @@ def maybe_respond(
     behavior_store: memory_store.MemoryStore | None = None,
     **loop_dependencies: Any,
 ) -> str | None:
+    resolved_loop_dependencies = dict(loop_dependencies)
     try:
         if intent_parser is None:
             if _is_onboarding_followup(question, history):
                 intent = OwnerIntent("onboarding", None, None, None, True)
             else:
-                classifier_profile = (
-                    "dialogue" if runtime_profile in {"dialogue", "diagnostic"}
-                    else "structured"
+                inventory_loader = resolved_loop_dependencies.get(
+                    "inventory_loader", ha_entity_query.load_inventory
                 )
-                intent = classify_owner_intent(
-                    question,
-                    context,
-                    history,
-                    runtime_profile=classifier_profile,
+                inventory = inventory_loader()
+                if not isinstance(inventory, dict):
+                    raise BoundedAgentError("device inventory is unavailable")
+                intent = resolve_obvious_read_intent(question, history, inventory)
+                resolved_loop_dependencies["inventory_loader"] = (
+                    lambda document=inventory: document
                 )
+                if intent is None:
+                    classifier_profile = (
+                        "dialogue" if runtime_profile in {"dialogue", "diagnostic"}
+                        else "structured"
+                    )
+                    intent = classify_owner_intent(
+                        question,
+                        context,
+                        history,
+                        runtime_profile=classifier_profile,
+                    )
         else:
             intent = intent_parser(question, context, history)
     except (BoundedAgentError, model_ha_proof.ProofError, OSError, ValueError):
@@ -1283,7 +1502,7 @@ def maybe_respond(
             intent,
             voice=voice,
             runtime_profile=runtime_profile,
-            **loop_dependencies,
+            **resolved_loop_dependencies,
         )
     except (
         BoundedAgentError,

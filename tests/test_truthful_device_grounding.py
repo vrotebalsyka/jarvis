@@ -56,6 +56,42 @@ class TruthfulDeviceGroundingTests(unittest.TestCase):
         )
         self.assertEqual(answer, "Андрей: заряд 100%.")
 
+    def test_battery_control_timestamp_cannot_replace_numeric_measurement(self) -> None:
+        observation = {
+            "display_name": "Андрей",
+            "physical_availability": "available",
+            "features": [
+                {
+                    "human_name": "Возврат на зарядку",
+                    "component": "battery-start_charge",
+                    "semantic_role": "control",
+                    "domain": "button",
+                    "availability": "available",
+                    "state": {"kind": "text", "value": "2026-08-11T17:28:09+00:00"},
+                },
+                {
+                    "human_name": "Battery Level",
+                    "component": "battery-battery_level",
+                    "semantic_role": "measurement",
+                    "domain": "sensor",
+                    "availability": "available",
+                    "state": {"kind": "number", "value": 100.0},
+                },
+                {
+                    "human_name": "Статус",
+                    "component": "vacuum-status",
+                    "semantic_role": "measurement",
+                    "domain": "sensor",
+                    "availability": "available",
+                    "state": {"kind": "text", "value": "charging"},
+                },
+            ],
+        }
+        answer = proof.render_device_observation(observation, "Что с Андреем?")
+        self.assertIn("на док-станции и заряжается", answer)
+        self.assertIn("заряд 100%", answer)
+        self.assertNotIn("2026", answer)
+
     def test_accepted_action_is_never_rendered_as_success(self) -> None:
         answer = proof.render_action_receipt({
             "status": "partially_verified",

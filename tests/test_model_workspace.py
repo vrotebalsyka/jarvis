@@ -18,6 +18,9 @@ import model_workspace as workspace  # noqa: E402
 
 
 class ModelWorkspaceTests(unittest.TestCase):
+    def test_owner_quota_is_exactly_ten_gibibytes(self) -> None:
+        self.assertEqual(workspace.MAX_TOTAL_BYTES, 10 * 1024 * 1024 * 1024)
+
     def make_root(self, parent: str) -> Path:
         root = Path(parent) / "workspace"
         root.mkdir(mode=0o700)

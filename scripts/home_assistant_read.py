@@ -60,6 +60,16 @@ ALLOWED_CREDENTIAL_DIRECTORIES = {
     Path("/run/credentials/home-butler-full-entity-report.service"),
     Path("/run/credentials/home-butler-diagnostic-monitor.service"),
 }
+DEVICE_LEARNING_CREDENTIAL_DIRECTORY_RE = re.compile(
+    r"/run/credentials/home-butler-device-learning@[a-f0-9]{64}\.service\Z"
+)
+
+
+def _credential_directory_allowed(path: Path) -> bool:
+    return (
+        path in ALLOWED_CREDENTIAL_DIRECTORIES
+        or DEVICE_LEARNING_CREDENTIAL_DIRECTORY_RE.fullmatch(str(path)) is not None
+    )
 MAX_CONFIG_BYTES = 16_384
 MAX_TOKEN_BYTES = 4_096
 MAX_RESPONSE_BYTES = 4 * 1_048_576
@@ -292,7 +302,7 @@ def load_config(path: Path | None = None) -> AdapterConfig:
         if values["HOME_ASSISTANT_TOKEN_FILE"] != CREDENTIAL_REFERENCE:
             raise AdapterError("api_unavailable")
         credential_directory = Path(os.environ.get("CREDENTIALS_DIRECTORY", ""))
-        if credential_directory not in ALLOWED_CREDENTIAL_DIRECTORIES:
+        if not _credential_directory_allowed(credential_directory):
             raise AdapterError("api_unavailable")
         token_path = credential_directory / "home-assistant.token"
     else:

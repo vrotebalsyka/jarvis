@@ -218,6 +218,7 @@ for executable in \
   model_workspace.py safe_maintenance.py maintenance_worker.py \
   memory_store.py behavior_preferences.py context_builder.py turn_observability.py \
   capability_catalog.py bounded_ha_agent.py \
+  device_learning.py \
   local_chat_gateway.py \
   startup_self_check.py startup_voice_status.py \
   qualification_status.py \
@@ -342,6 +343,7 @@ install_unit home-butler.service
 install_unit home-butler-heartbeat.service
 install_unit home-butler-heartbeat.timer
 install_unit home-butler-ha-proof.service
+install_unit home-butler-device-learning@.service
 install_unit home-butler-startup-ha-check.service
 install_unit home-butler-startup-ha-check.timer
 install_unit home-butler-startup-self-check.service
@@ -402,6 +404,7 @@ systemd-analyze verify \
   "$UNIT_TARGET_DIR/home-butler-heartbeat.service" \
   "$UNIT_TARGET_DIR/home-butler-heartbeat.timer" \
   "$UNIT_TARGET_DIR/home-butler-ha-proof.service" \
+  "$UNIT_TARGET_DIR/home-butler-device-learning@.service" \
   "$UNIT_TARGET_DIR/home-butler-startup-ha-check.service" \
   "$UNIT_TARGET_DIR/home-butler-startup-ha-check.timer" \
   "$UNIT_TARGET_DIR/home-butler-startup-self-check.service" \

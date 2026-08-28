@@ -120,7 +120,7 @@ UNFINISHED_WORK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 HA_OBJECT_PATTERN = re.compile(
-    r"(?:\bдатчик\S*|\bсущност\S*|\bвыключател\S*|\bрозетк\S*|\bкнопк\S*|"
+    r"(?:\bдатчик\S*|\bсущност\S*|\bвыключател\S*|\bрозетк\S*|\bкнопк\S*|\bробот\S*|"
     r"\bустройств\S*|\bприбор\S*|\bреле\S*|\bпосудомо\S*|\bстирал\S*|"
     r"\bхолодиль\S*|\bпылесос\S*|\bкондиционер\S*|\bтелевизор\S*|\bколонк\S*)",
     re.IGNORECASE,

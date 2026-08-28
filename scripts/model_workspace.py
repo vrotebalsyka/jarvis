@@ -17,7 +17,7 @@ WORKSPACE_ROOT = Path(os.environ.get(
     "HOME_BUTLER_MODEL_WORKSPACE",
     "/home/homebutler/.local/share/home-butler/model-workspace",
 ))
-MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024
+MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_MODEL_READ_BYTES = 24 * 1024
 MAX_FILES = 4096

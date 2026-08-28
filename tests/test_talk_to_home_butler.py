@@ -435,6 +435,7 @@ class OwnerChatRoutingTests(unittest.TestCase):
             "покажи сущности Tuya",
             "покажи switch.kavidor_switch_1",
             "что с kavidor_switch_1",
+            "Что с роботом Андреем?",
         ):
             with self.subTest(phrase=phrase):
                 self.assertEqual(owner_chat.classify_request(phrase), "home_assistant")

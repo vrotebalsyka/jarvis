@@ -130,6 +130,16 @@ class ConfigTests(unittest.TestCase):
                 Path("/run/credentials/home-butler-diagnostic-monitor.service"),
             },
         )
+        self.assertTrue(
+            adapter._credential_directory_allowed(Path(
+                "/run/credentials/home-butler-device-learning@" + "a" * 64 + ".service"
+            ))
+        )
+        self.assertFalse(
+            adapter._credential_directory_allowed(Path(
+                "/run/credentials/home-butler-device-learning@../../root.service"
+            ))
+        )
 
     def write_config(
         self,

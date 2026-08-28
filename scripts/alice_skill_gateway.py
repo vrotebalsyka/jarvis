@@ -799,6 +799,10 @@ class SkillApplication:
         if turn.utterance == HEALTH_HA_READ_COMMAND:
             self.ha_health_probe()
             return skill_response(HEALTH_HA_READ_TEXT), "health_ha_read"
+        if self.deferred is not None:
+            deferred_status = self.deferred.status_response(turn.utterance)
+            if deferred_status is not None:
+                return skill_response(deferred_status), "deferred_status"
         record = self.sessions.get(turn.session_id, turn.is_new)
         with record.lock:
             if turn.message_id == record.last_message_id and record.last_response is not None:
@@ -815,15 +819,7 @@ class SkillApplication:
                 if self.deferred is not None and not is_status_request
                 else None
             )
-            deferred_status = (
-                self.deferred.status_response(turn.utterance)
-                if self.deferred is not None
-                else None
-            )
-            if deferred_status is not None:
-                response = skill_response(deferred_status)
-                route = "deferred_status"
-            elif normalized in PING_PHRASES:
+            if normalized in PING_PHRASES:
                 response = skill_response("Дворецкий на связи.")
                 route = "ping"
             elif normalized in EXIT_PHRASES:

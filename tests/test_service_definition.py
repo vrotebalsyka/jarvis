@@ -17,6 +17,9 @@ HEARTBEAT = (
 HA_PROOF = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-ha-proof.service"
 ).read_text()
+DEVICE_LEARNING = (
+    PROJECT_DIR / "config" / "systemd" / "home-butler-device-learning@.service"
+).read_text()
 DIALOGUE_QUALIFICATION = (
     PROJECT_DIR / "config" / "systemd" / "home-butler-dialogue-qualification.service"
 ).read_text()
@@ -167,7 +170,7 @@ HOST_RECOVERY_COMMAND = (
 class ServiceDefinitionTests(unittest.TestCase):
     def test_services_are_unprivileged_and_use_isolated_runtime(self) -> None:
         for unit in (
-            GATEWAY, HEARTBEAT, HA_PROOF, STARTUP_HA, INCIDENT_MONITOR,
+            GATEWAY, HEARTBEAT, HA_PROOF, DEVICE_LEARNING, STARTUP_HA, INCIDENT_MONITOR,
             INCIDENT_NOTIFIER, INVENTORY, RECOVERY,
             AUTOMATION_DIAGNOSTICS, SYSTEM_LOG_DIAGNOSTICS, DEVICE_HEALTH,
             AUTOMATION_RECOVERY, INTEGRATION_RECOVERY, ENTITY_FRESHNESS,
@@ -232,6 +235,11 @@ class ServiceDefinitionTests(unittest.TestCase):
         self.assertIn("ExecStart=/opt/home-butler/scripts/model_ha_proof.py --require-gpu", HA_PROOF)
         self.assertNotIn("[Install]", HA_PROOF)
         self.assertIn("install_unit home-butler-ha-proof.service", INSTALLER)
+        self.assertIn("device_learning.py", INSTALLER)
+        self.assertIn("install_unit home-butler-device-learning@.service", INSTALLER)
+        self.assertIn("--physical-device-id %i", DEVICE_LEARNING)
+        self.assertIn("ReadWritePaths=/home/homebutler/.local/share/home-butler/model-workspace", DEVICE_LEARNING)
+        self.assertNotIn("[Install]", DEVICE_LEARNING)
         self.assertIn("ExecStart=/opt/home-butler/scripts/model_ha_proof.py", STARTUP_HA)
         self.assertNotIn("--require-gpu", STARTUP_HA)
         self.assertNotIn("[Install]", STARTUP_HA)

@@ -255,6 +255,39 @@ def _query_token_matches(token: str, haystack_tokens: list[str], domains: set[st
             return True
     return any(_resolver_word_match(token, candidate) for candidate in haystack_tokens)
 
+
+def _query_token_score(
+    token: str,
+    *,
+    display_tokens: list[str],
+    entity_tokens: list[str],
+    area_tokens: list[str],
+    model_tokens: list[str],
+    integration_tokens: list[str],
+    domains: set[str],
+) -> int:
+    """Rank one token by DeviceGraph evidence without choosing on weak data."""
+    concept = _query_concept(token)
+    scores: list[int] = []
+    sources = (
+        (display_tokens, 100),
+        (entity_tokens, 85),
+        (area_tokens, 70),
+        (model_tokens, 45),
+        (integration_tokens, 10),
+    )
+    for candidates, weight in sources:
+        if any(_resolver_word_match(token, candidate) for candidate in candidates):
+            scores.append(weight)
+        if concept is not None and any(
+            any(_resolver_word_match(word, candidate) for candidate in candidates)
+            for word in TYPE_CONCEPTS[concept]
+        ):
+            scores.append(weight)
+    if concept is not None and concept in domains:
+        scores.append(80)
+    return max(scores, default=0)
+
 def _snapshot_index(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     entities = snapshot.get("entities")
     if not isinstance(entities, list) or len(entities) > adapter.MAX_LISTED_ENTITIES:
@@ -598,6 +631,10 @@ def find_model_devices(
             if isinstance(entity_ids, list) and value in entity_by_id
         ] if isinstance(entity_ids, list) else []
         area_values: set[str] = set()
+        for field in ("area_names", "area_aliases"):
+            values = device.get(field, [])
+            if isinstance(values, list):
+                area_values.update(value for value in values if isinstance(value, str))
         integration_values: set[str] = set()
         for item in members:
             area_name = item.get("area_name")
@@ -613,33 +650,56 @@ def find_model_devices(
                 )
         areas = sorted(area_values)
         integrations = sorted(integration_values)
-        text_values: list[Any] = [device.get("display_name"), *areas, *integrations]
+        display_values: list[Any] = [
+            device.get("display_name"), device.get("name"),
+            device.get("name_by_user"), device.get("original_name"),
+        ]
+        aliases = device.get("aliases", [])
+        if isinstance(aliases, list):
+            display_values.extend(aliases)
+        model_values: list[Any] = []
         for field in ("manufacturers", "models"):
             values = device.get(field, [])
             if isinstance(values, list):
-                text_values.extend(values)
+                model_values.extend(values)
+        entity_values: list[Any] = []
         for item in members:
-            text_values.extend([item.get("friendly_name"), item.get("original_name")])
+            entity_values.extend([item.get("friendly_name"), item.get("original_name")])
             aliases = item.get("entity_aliases", [])
             if isinstance(aliases, list):
-                text_values.extend(aliases)
-        haystack = " ".join(
-            value.casefold() for value in text_values if isinstance(value, str)
-        )
-        haystack_tokens = _resolver_tokens(haystack)
+                entity_values.extend(aliases)
+        display_tokens = _resolver_tokens(" ".join(
+            value for value in display_values if isinstance(value, str)
+        ))
+        entity_tokens = _resolver_tokens(" ".join(
+            value for value in entity_values if isinstance(value, str)
+        ))
+        area_tokens = _resolver_tokens(" ".join(areas))
+        model_tokens = _resolver_tokens(" ".join(
+            value for value in model_values if isinstance(value, str)
+        ))
+        integration_tokens = _resolver_tokens(" ".join(integrations))
         member_domains = {
             str(item.get("domain") or str(item.get("entity_id", "")).split(".", 1)[0])
             for item in members
             if isinstance(item, dict)
         }
         query_tokens = _resolver_tokens(normalized_query)
-        if query_tokens and not all(
-            _query_token_matches(token, haystack_tokens, member_domains)
+        token_scores = [
+            _query_token_score(
+                token,
+                display_tokens=display_tokens,
+                entity_tokens=entity_tokens,
+                area_tokens=area_tokens,
+                model_tokens=model_tokens,
+                integration_tokens=integration_tokens,
+                domains=member_domains,
+            )
             for token in query_tokens
-        ):
+        ]
+        if query_tokens and any(score == 0 for score in token_scores):
             continue
         if normalized_area:
-            area_tokens = _resolver_tokens(" ".join(areas))
             if not all(
                 _query_token_matches(token, area_tokens, set())
                 for token in _resolver_tokens(normalized_area)
@@ -648,6 +708,7 @@ def find_model_devices(
         if integration and integration not in integrations:
             continue
         matches.append({
+            "_resolver_score": sum(token_scores),
             "physical_device_id": physical_id,
             "display_name": device.get("display_name"),
             "areas": areas,
@@ -659,6 +720,13 @@ def find_model_devices(
             "unavailable_entity_count": device.get("unavailable_entity_count", 0),
             "capabilities": device.get("capabilities", []),
         })
+    matches.sort(key=lambda item: (
+        -int(item.get("_resolver_score", 0)),
+        str(item.get("display_name") or "").casefold(),
+        str(item.get("physical_device_id") or ""),
+    ))
+    for item in matches:
+        item.pop("_resolver_score", None)
     selected = matches[offset:offset + limit]
     return {
         "schema_version": 1,

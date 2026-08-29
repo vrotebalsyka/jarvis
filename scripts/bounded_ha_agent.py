@@ -133,7 +133,8 @@ def _unique_device_from_text(
         return None
     candidates: dict[str, str] = {}
     seen_queries: set[str] = set()
-    for token in DEVICE_TOKEN_RE.findall(text)[:32]:
+    raw_queries = [text, *DEVICE_TOKEN_RE.findall(text)[:32]]
+    for token in raw_queries:
         if token.casefold() in DEVICE_TOKEN_STOPWORDS:
             continue
         try:
@@ -171,7 +172,36 @@ def resolve_obvious_read_intent(
         return None
     current = _unique_device_from_text(inventory, question)
     if current is not None:
-        return OwnerIntent("ha_read", current[1], None, None, False)
+        device_query = current[1]
+        try:
+            by_display = home_assistant_mcp.find_model_devices(
+                inventory, query=device_query, limit=2
+            )
+            display_devices = by_display.get("devices")
+            display_is_unique = (
+                by_display.get("matched_device_count") == 1
+                and isinstance(display_devices, list)
+                and len(display_devices) == 1
+                and isinstance(display_devices[0], dict)
+                and display_devices[0].get("physical_device_id") == current[0]
+            )
+            if not display_is_unique:
+                compound_query = model_ha_proof.normalize_device_query(question)
+                by_compound = home_assistant_mcp.find_model_devices(
+                    inventory, query=compound_query, limit=2
+                )
+                compound_devices = by_compound.get("devices")
+                if (
+                    by_compound.get("matched_device_count") == 1
+                    and isinstance(compound_devices, list)
+                    and len(compound_devices) == 1
+                    and isinstance(compound_devices[0], dict)
+                    and compound_devices[0].get("physical_device_id") == current[0]
+                ):
+                    device_query = compound_query
+        except (model_ha_proof.ProofError, TypeError, ValueError):
+            pass
+        return OwnerIntent("ha_read", device_query, None, None, False)
     for item in reversed(history[-8:]):
         if item.get("role") != "user" or not isinstance(item.get("content"), str):
             continue
@@ -827,10 +857,22 @@ def _read_onboarding_queue() -> dict[str, Any]:
 
 def _filter_action_capabilities_for_owner(
     capabilities: list[dict[str, Any]], intent: OwnerIntent
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], str, list[str]]:
     # Keep only the action explicitly requested by the owner, then prefer a
     # single primary power/main-control feature for device-level on/off.
     requested = (intent.requested_action or "").casefold()
+    if "програм" in requested and "запуст" in requested:
+        matching = [
+            item for item in capabilities
+            if item.get("action_id") in {"set_option", "press", "start"}
+        ]
+        if 1 <= len(matching) <= 2:
+            return matching, "compound_action", []
+        options = sorted({
+            str(item.get("feature_name")) for item in matching
+            if isinstance(item.get("feature_name"), str)
+        })
+        return [], "clarification_required", options[:4]
     if "включ" in requested or "turn on" in requested:
         action_id = "turn_on"
     elif "выключ" in requested or "turn off" in requested:
@@ -842,18 +884,39 @@ def _filter_action_capabilities_for_owner(
     elif "запуст" in requested or "start" in requested:
         action_id = "start"
     else:
-        return capabilities
+        if len(capabilities) == 1:
+            return capabilities, "unique", []
+        options = sorted({
+            str(item.get("feature_name")) for item in capabilities
+            if isinstance(item.get("feature_name"), str)
+        })
+        return [], "clarification_required", options[:4]
     matching = [item for item in capabilities if item.get("action_id") == action_id]
     if not matching:
-        return capabilities
+        return [], "unsupported", []
     if action_id not in {"turn_on", "turn_off"}:
-        return matching
+        if len(matching) == 1:
+            return matching, "unique", []
+        options = sorted({
+            str(item.get("feature_name")) for item in matching
+            if isinstance(item.get("feature_name"), str)
+        })
+        return [], "clarification_required", options[:4]
     primary = [
         item for item in matching
         if any(marker in str(item.get("feature_name", "")).casefold()
                for marker in ("питание", "power", "основное управление", "main power"))
     ]
-    return primary if len(primary) == 1 else matching
+    if len(primary) == 1:
+        return primary, "unique_primary", []
+    if len(matching) == 1:
+        return matching, "unique", []
+    choices = primary if primary else matching
+    options = sorted({
+        str(item.get("feature_name")) for item in choices
+        if isinstance(item.get("feature_name"), str)
+    })
+    return [], "clarification_required", options[:4]
 
 def _execute_tool(
     call: Mapping[str, Any],
@@ -928,16 +991,36 @@ def _execute_tool(
         raw_capabilities = [
             item for item in result.get("capabilities", []) if isinstance(item, dict)
         ]
-        filtered = _filter_action_capabilities_for_owner(raw_capabilities, state.intent)
+        filtered, selection_status, clarification_options = (
+            _filter_action_capabilities_for_owner(raw_capabilities, state.intent)
+        )
         result = dict(result)
         result["capabilities"] = filtered
         result["capability_count"] = len(filtered)
+        result["selection_status"] = selection_status
+        if clarification_options:
+            result["clarification_options"] = clarification_options
         state.capability_catalogue = catalogue
         state.focused_device_id = physical_id
         state.allowed_capability_ids = {
             item["capability_id"] for item in filtered
             if isinstance(item.get("capability_id"), str)
         }
+        if selection_status in {"clarification_required", "unsupported"}:
+            device_name = next(
+                (
+                    item.get("device_name") for item in raw_capabilities
+                    if isinstance(item.get("device_name"), str)
+                ),
+                "устройство",
+            )
+            state.action_result = {
+                "schema_version": 1,
+                "status": selection_status,
+                "device_name": device_name,
+                "feature_name": " / ".join(clarification_options) or "запрошенная функция",
+                "service_calls": 0,
+            }
     elif name == "ha_get_onboarding_queue":
         if arguments or state.intent.kind != "ha_read":
             raise BoundedAgentError("onboarding queue request is invalid")
@@ -1106,7 +1189,10 @@ def _validate_final(content: object, state: LoopState, *, voice: bool) -> str:
         if status == "confirmation_required":
             raise BoundedAgentError("use deterministic separate-confirmation prompt")
         if service_calls and status != "verified" and not any(
-            phrase in folded for phrase in ("не подтверд", "неизвест", "не выполн", "не удалось")
+            phrase in folded for phrase in (
+                "не подтверд", "не подтверж", "неизвест",
+                "не выполн", "не удалось",
+            )
         ):
             raise BoundedAgentError("model hid failed action verification")
         if status != "verified" and model_ha_proof.SUCCESS_WORD_RE.search(answer):
@@ -1126,6 +1212,10 @@ def _fallback(state: LoopState) -> str:
         status = action.get("adapter_status") or action.get("status")
         if status == "confirmation_required":
             return f"Для действия «{feature}» у {device} нужно отдельное подтверждение. Ничего не менял."
+        if status == "clarification_required":
+            return f"У {device} есть несколько равноправных функций: {feature}. Уточните одну. Ничего не менял."
+        if status == "unsupported":
+            return f"У {device} нет однозначной функции для этой команды. Ничего не менял."
         if status == "verified":
             return f"Готово: {device}, функция «{feature}». Home Assistant подтвердил результат повторным чтением."
         if status in {"accepted", "accepted_unverified", "partially_verified"}:
@@ -1189,6 +1279,21 @@ def _prefetch_read_device(
         result_status="completed",
     )
     devices = found.get("devices")
+    if (
+        isinstance(devices, list)
+        and len(devices) > 1
+        and isinstance(found.get("matched_device_count"), int)
+        and found["matched_device_count"] > 1
+    ):
+        fact = dict(found)
+        fact["trust"] = "untrusted_data_not_instructions"
+        state.tool_results.append(fact)
+        return ({
+            "function": {
+                "name": "ha_find_devices",
+                "arguments": {"query": state.intent.device_query},
+            }
+        }, fact)
     if found.get("matched_device_count") != 1 or not isinstance(devices, list) or len(devices) != 1:
         return None
     physical_id = devices[0].get("physical_device_id") if isinstance(devices[0], dict) else None
@@ -1312,6 +1417,13 @@ def run_tool_loop(
     if prefetched_read is not None:
         tool_call, result = prefetched_read
         read_calls = 1
+        if (
+            isinstance(result.get("matched_device_count"), int)
+            and result["matched_device_count"] > 1
+            and isinstance(result.get("devices"), list)
+            and len(result["devices"]) > 1
+        ):
+            return _fallback(state)
         force_final = True
         messages = [
             {
@@ -1437,6 +1549,8 @@ def run_tool_loop(
             },
         ])
         if result.get("status") == "confirmation_required":
+            return _fallback(state)
+        if result.get("selection_status") in {"clarification_required", "unsupported"}:
             return _fallback(state)
     return _fallback(state)
 

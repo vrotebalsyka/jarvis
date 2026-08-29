@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -163,6 +164,28 @@ class DeviceLearningTests(unittest.TestCase):
                 75,
             )
             self.assertFalse(model_workspace.status(root)["active_project_instructions_writable"])
+
+    def test_profile_only_learning_does_not_invent_validated_corpus(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "workspace"
+            root.mkdir(mode=0o700)
+            root.chmod(0o700)
+            with mock.patch.object(
+                learning.ha_mcp,
+                "get_model_device_details",
+                return_value=robot_details(),
+            ):
+                result = learning.learn_profile_only(
+                    {}, inventory(), ROBOT, workspace_root=root
+                )
+            self.assertEqual(result["status"], "profile_built_deterministically")
+            self.assertFalse(result["training_corpus_created"])
+            self.assertFalse(result["model_answers_used_as_facts"])
+            profile = json.loads(
+                model_workspace.read_text(result["path"], root)["content"]
+            )
+            self.assertEqual(profile["display_name"], "Андрей")
+            self.assertFalse((root / "knowledge" / "training").exists())
 
     def test_voice_retrieval_uses_prepared_profile_and_at_most_eight_features(self) -> None:
         details = robot_details()

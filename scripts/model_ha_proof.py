@@ -419,6 +419,9 @@ def render_device_observation(result: Mapping[str, Any], current_user: str = "")
     features = [item for item in raw_features or [] if isinstance(item, Mapping)]
     folded_question = current_user.casefold()
 
+    if re.search(r"wi-?fi|вай[ -]?фай|\bсеть\b|интеграц|сетев.*модул", folded_question):
+        return f"{name}: причина по текущим данным не подтверждена."
+
     # A command such as ``battery-start_charge`` is not a battery reading.
     # Prefer a numeric measurement so a button timestamp can never become a
     # percentage in a user-facing answer.

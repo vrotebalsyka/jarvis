@@ -100,3 +100,5 @@ Stage 69 нельзя объявлять завершённым, пока одн
 - реальный внешний Yandex skill отдельно проверен через опубликованный webhook/tunnel/настоящий запуск навыка, а не только POST на `127.0.0.1`.
 
 В финале дай короткий отчёт на русском: что было сломано, что реально исправлено, какие живые сценарии прошли, latency, какие blockers остались. Не переходи к новым функциям до выполнения gates.
+
+Learned profile никогда не должен фильтровать текущие HA features. Любая новая live feature, отсутствующая в старом profile, остаётся читаемой через generic live semantics. Compact retrieval обязан переносить live areas/room. При нескольких равноправных action capabilities executor не должен отдавать их модели на выбор — только clarification без side effect. Acceptance обязательно проверить отдельными regressions для stale profile + new live feature и для вопроса «где» через compact profile. ScriptedModel не считать E2E evidence. Live control/outage/recovery не выполнять без отдельного разрешения владельца.

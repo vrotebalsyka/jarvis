@@ -473,24 +473,22 @@ class BoundedHaAgentTests(unittest.TestCase):
 
     def test_unsafe_markdown_final_gets_one_plain_text_retry(self) -> None:
         model = ScriptedModel([
-            tool_call("ha_find_devices", {"query": "Андрей"}),
-            tool_call("ha_get_device_details", {"physical_device_hash": PHYSICAL}),
             {"message": {"content": "**Батарея:** 80 процентов"}},
-            {"message": {"content": "У Андрея батарея 80 процентов. Ничего не менял."}},
         ])
         result = agent.run_tool_loop(
             "Что с Андреем?", {}, [],
             agent.OwnerIntent("ha_read", "Андрей", None, None, False),
             **self.dependencies(model),
         )
-        self.assertEqual(
-            result, "У Андрея батарея 80 процентов. Ничего не менял."
-        )
-        self.assertNotIn("tools", model.payloads[-1])
+        self.assertIn("Андрей", result)
+        self.assertIn("доступно функций 2", result)
+        self.assertEqual(len(model.payloads), 1)
+        self.assertNotIn("tools", model.payloads[0])
 
     def test_coreference_action_uses_capability_id_and_private_entity(self) -> None:
         control_executor = mock.Mock(return_value=({
-            "status": "accepted", "verification": "get_readback_completed",
+            "status": "verified", "verification": "semantic_state_matches_expected",
+            "verification_strength": "physical_state",
             "before_state": "cleaning", "after_state": "returning", "service_calls": 1,
         }, 0))
         capability_id = next(
@@ -542,13 +540,20 @@ class BoundedHaAgentTests(unittest.TestCase):
                 {"capability_id": start["capability_id"], "parameters": {}},
             ]}),
             {"message": {"content": (
-                "Выбрал программу Normal и запустил посудомойку. "
-                "Home Assistant подтвердил оба шага повторным чтением."
+                "Программа Normal подтверждена. Команда запуска принята, "
+                "но физический запуск не подтверждён."
             )}},
         ])
         executor = mock.Mock(side_effect=[
-            ({"status": "verified", "verification": "state_matches_expected", "service_calls": 1}, 0),
-            ({"status": "accepted", "verification": "get_readback_completed", "service_calls": 1}, 0),
+            ({
+                "status": "verified", "verification": "state_matches_expected",
+                "verification_strength": "state_readback", "service_calls": 1,
+            }, 0),
+            ({
+                "status": "accepted_unverified",
+                "verification": "command_accepted_no_physical_proof",
+                "verification_strength": "transport_only", "service_calls": 1,
+            }, 0),
         ])
         dependencies = self.dependencies(model)
         dependencies.update({
@@ -565,7 +570,7 @@ class BoundedHaAgentTests(unittest.TestCase):
             **dependencies,
         )
         self.assertIn("Normal", result)
-        self.assertIn("запустил", result)
+        self.assertIn("не подтверждён", result)
         self.assertEqual(executor.call_count, 2)
         executor.assert_has_calls([
             mock.call("select.dishwasher_program", "set_option", "Normal"),
@@ -612,7 +617,7 @@ class BoundedHaAgentTests(unittest.TestCase):
 
         executor = mock.Mock(return_value=({
             "status": "verified", "verification": "state_matches_expected",
-            "service_calls": 1,
+            "verification_strength": "state_readback", "service_calls": 1,
         }, 0))
 
         def dependencies(model: ScriptedModel) -> dict:

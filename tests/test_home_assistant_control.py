@@ -173,6 +173,9 @@ class ControlBoundaryTests(unittest.TestCase):
             snapshot("number.andrey_volume", 1.0),
             snapshot("number.andrey_volume", 5.0),
             snapshot("number.andrey_volume", 5.0),
+            snapshot("number.andrey_volume", 5.0),
+            snapshot("number.andrey_volume", 5.0),
+            snapshot("number.andrey_volume", 5.0),
         ))
         calls = []
 
@@ -203,9 +206,12 @@ class ControlBoundaryTests(unittest.TestCase):
         self.assertEqual(result["after_state"], 5.0)
         self.assertEqual(result["verification"], "stable_state_matches_expected")
 
-    def test_switch_action_requires_two_matching_readbacks(self) -> None:
+    def test_switch_action_requires_five_matching_readbacks(self) -> None:
         snapshots = iter((
             snapshot("switch.kavidor_switch_1", "off"),
+            snapshot("switch.kavidor_switch_1", "on"),
+            snapshot("switch.kavidor_switch_1", "on"),
+            snapshot("switch.kavidor_switch_1", "on"),
             snapshot("switch.kavidor_switch_1", "on"),
             snapshot("switch.kavidor_switch_1", "on"),
         ))
@@ -225,7 +231,10 @@ class ControlBoundaryTests(unittest.TestCase):
         self.assertEqual(result["verification_strength"], "state_readback")
 
     def test_transient_switch_state_is_not_verified(self) -> None:
-        values = ["off", "on", "off", "off", "off", "off", "off", "off", "off"]
+        values = [
+            "off", "on", "off", "off", "off", "off", "off",
+            "off", "off", "off", "off", "off", "off",
+        ]
         snapshots = iter(snapshot("switch.dishwasher_power", value) for value in values)
         with mock.patch.object(ha_read, "load_config", return_value=config()):
             result, exit_code = control.execute(

@@ -618,7 +618,11 @@ def compact_profile(
     profile: dict[str, Any], live_details: dict[str, Any], question: str,
     *, maximum: int = 8,
 ) -> dict[str, Any]:
-    """Return only 3–8 relevant live features plus learned semantics."""
+    """Return relevant current features with optional learned semantics.
+
+    A stored profile is an overlay, not a filter. Features first observed after
+    the profile was built remain visible and use current registry semantics.
+    """
     if not 3 <= maximum <= 8:
         raise LearningError("compact profile feature limit is invalid")
     physical_id = profile.get("physical_device_id")
@@ -637,13 +641,27 @@ def compact_profile(
         "dock": 35, "mode": 30, "cleaning": 30, "configuration": 20,
         "unknown": 5,
     }
+    device_type = str(profile.get("device_type") or "home_assistant_device")
     for raw in live_details.get("features", []):
         if not isinstance(raw, dict) or not isinstance(raw.get("entity_id"), str):
             continue
         ref = _feature_ref(str(physical_id), raw["entity_id"])
         semantic = learned.get(ref)
         if not isinstance(semantic, dict):
-            continue
+            component, role = _component_and_role(raw, device_type)
+            measurement = raw.get("measurement_type")
+            raw_unit = measurement.get("unit") if isinstance(measurement, dict) else None
+            if isinstance(raw_unit, dict):
+                raw_unit = raw_unit.get("text")
+            semantic = {
+                "human_name": _canonical(raw.get("human_name"), component),
+                "domain": _canonical(raw.get("domain"), "unknown"),
+                "component": component,
+                "semantic_role": role,
+                "unit": _canonical(raw_unit, "") or None,
+                "availability_policy": "live_registry_semantics",
+                "conditional_on": None,
+            }
         searchable = " ".join([
             str(semantic.get("human_name", "")), str(semantic.get("component", "")),
             str(semantic.get("semantic_role", "")),
@@ -695,8 +713,12 @@ def compact_profile(
     return {
         "schema_version": 1,
         "source": "learned profile plus current read-only HA facts",
-        "display_name": profile.get("display_name"),
+        "display_name": live_details.get("display_name") or profile.get("display_name"),
         "device_type": profile.get("device_type"),
+        "areas": [
+            value for value in live_details.get("areas", [])
+            if isinstance(value, str) and value.strip()
+        ][:8],
         "physical_availability": live_details.get("physical_availability"),
         "available_feature_count": live_details.get(
             "available_feature_count",
@@ -728,6 +750,9 @@ def render_compact_observation(document: dict[str, Any], question: str) -> str:
     ]
     normalized = unicodedata.normalize("NFKC", question).casefold()
 
+    if re.search(r"wi-?fi|вай[ -]?фай|\bсеть\b|интеграц|сетев.*модул", normalized):
+        return f"{name}: причина по текущим данным не подтверждена."
+
     requested = (
         (r"батар|заряд", "battery"),
         (r"фильтр", "filter"),
@@ -742,7 +767,11 @@ def render_compact_observation(document: dict[str, Any], question: str) -> str:
         (value for pattern, value in requested if re.search(pattern, normalized)),
         None,
     )
-    if component is not None:
+    multi_fact_request = re.search(
+        r"что сейчас делает|\bгде\b|состояни|статус",
+        normalized,
+    ) is not None
+    if component is not None and not multi_fact_request:
         feature = next(
             (item for item in features if item.get("component") == component),
             None,
@@ -795,6 +824,12 @@ def render_compact_observation(document: dict[str, Any], question: str) -> str:
         None,
     )
     parts: list[str] = []
+    areas = [
+        value for value in document.get("areas", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    if re.search(r"\bгде\b", normalized) is not None and areas:
+        parts.append(f"{name}: зона — {', '.join(areas[:2])}")
     status_value = status.get("state", {}).get("value") if isinstance(status, dict) else None
     if str(status_value).casefold() == "charging":
         parts.append(f"{name} находится на док-станции и заряжается")
@@ -829,8 +864,25 @@ def validate_compact_answer(
         "интеграц", "сетевой модуль",
     )
     source_text = json.dumps(document, ensure_ascii=False).casefold()
-    if any(value in folded and value not in source_text for value in forbidden_causes):
+    asks_cause = re.search(
+        r"wi-?fi|вай[ -]?фай|\bсеть\b|интеграц|сетев.*модул",
+        question_folded,
+    ) is not None
+    if asks_cause and "причина по текущим данным не подтверждена" not in folded:
+        reasons.append("unknown_cause_not_preserved")
+    if any(
+        value in folded and value not in source_text and value not in question_folded
+        for value in forbidden_causes
+    ):
         reasons.append("invented_unavailable_cause")
+
+    areas = [
+        value.casefold() for value in document.get("areas", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    if re.search(r"\bгде\b", question_folded) is not None and areas:
+        if not any(area in folded for area in areas):
+            reasons.append("area_omitted")
 
     status = next(
         (item for item in features if item.get("component") == "main_status"), None
@@ -927,7 +979,12 @@ def learn_one(
     if use_teacher:
         profile["teacher_analysis"] = teacher_semantic_analysis(profile)
     else:
-        profile["teacher_analysis"] = {"teacher_model": TEACHER_MODEL, "mode": "skipped_for_test", "accepted_suggestions": [], "suggestion_count": 0}
+        profile["teacher_analysis"] = {
+            "teacher_model": TEACHER_MODEL,
+            "mode": "deterministic_only_no_teacher",
+            "accepted_suggestions": [],
+            "suggestion_count": 0,
+        }
     snapshot_hash = _source_hash(snapshot, physical_id)
     candidates = generate_examples(profile, snapshot_hash)
     accepted, rejected = validate_corpus(candidates, profile)
@@ -965,6 +1022,53 @@ def learn_one(
         "actions_performed": 0,
         "teacher_model": TEACHER_MODEL,
         "paths": paths,
+    }
+
+
+def learn_profile_only(
+    snapshot: dict[str, Any],
+    inventory: dict[str, Any],
+    physical_id: str,
+    *,
+    workspace_root: Path | None = None,
+) -> dict[str, Any]:
+    """Persist deterministic live semantics without manufacturing a corpus.
+
+    Some HA devices expose too few facts or no safe control capability for the
+    fixed 75-example training contract.  They still need a semantic profile.
+    Keeping this path separate preserves the strict corpus gate: an incomplete
+    corpus is never relabelled as validated training data.
+    """
+    details = ha_mcp.get_model_device_details(snapshot, inventory, physical_id)
+    profile = build_profile(details, inventory)
+    profile["teacher_analysis"] = {
+        "teacher_model": TEACHER_MODEL,
+        "mode": "deterministic_only_no_teacher",
+        "accepted_suggestions": [],
+        "suggestion_count": 0,
+    }
+    root = model_workspace.WORKSPACE_ROOT if workspace_root is None else workspace_root
+    path = f"knowledge/devices/{profile['stable_id']}.json"
+    model_workspace.write_text(
+        path,
+        json.dumps(
+            profile, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ) + "\n",
+        root,
+    )
+    return {
+        "schema_version": 1,
+        "status": "profile_built_deterministically",
+        "physical_device_id": physical_id,
+        "stable_id": profile["stable_id"],
+        "display_name": profile["display_name"],
+        "feature_count": len(profile["features"]),
+        "capability_count": len(profile["capabilities"]),
+        "training_corpus_created": False,
+        "model_answers_used_as_facts": False,
+        "actions_performed": 0,
+        "teacher_mode": "deterministic_only_no_teacher",
+        "path": path,
     }
 
 

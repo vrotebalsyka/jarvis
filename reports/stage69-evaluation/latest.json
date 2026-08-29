@@ -1,0 +1,175 @@
+{
+  "check_count": 11,
+  "checks": [
+    {
+      "answer": "Андрей: зона — Кухня. Андрей находится на док-станции и заряжается. заряд 100%. недоступны 2 отдельные функции; причина по текущим данным не подтверждена.",
+      "latency_seconds": 2.703,
+      "name": "andrew_live_status_area_battery",
+      "pass": true,
+      "question": "Что сейчас делает Андрей, где он и сколько у него заряда?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "snapshot_age_seconds": 0.94
+    },
+    {
+      "answer": "Андрей: ресурс фильтра — 12%.",
+      "latency_seconds": 1.237,
+      "name": "andrew_live_filter_followup",
+      "pass": true,
+      "question": "а фильтр?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "snapshot_age_seconds": 0.769
+    },
+    {
+      "answer": "Roborock S5 Max: зона Кухня; на док-станции и заряжается; заряд 100%. Недоступны 7 функции (roborock s5 max identify, roborock s5 max info, roborock s5 max start charge); причина по текущим данным не подтверждена, весь прибор неисправным не считаю.",
+      "latency_seconds": 15.652,
+      "name": "unlearned_roborock_live_read",
+      "pass": true,
+      "question": "Что с Roborock? Где он и сколько батареи?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "snapshot_age_seconds": 0.239,
+      "unlearned_profile": true
+    },
+    {
+      "answer": "Нашёл несколько устройств: Roborock S5 Max, Андрей. Уточните одно название.",
+      "latency_seconds": 0.018,
+      "name": "two_robots_require_clarification",
+      "pass": true,
+      "question": "Что с роботом?",
+      "real_model_calls": 0,
+      "reasons": [],
+      "snapshot_age_seconds": 0.038
+    },
+    {
+      "answer": "Посудомойка сейчас работает. Осталось 148 минут до окончания цикла мойки.",
+      "latency_seconds": 5.556,
+      "name": "russian_dishwasher_live_read",
+      "pass": true,
+      "question": "Что с посудомойкой?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "snapshot_age_seconds": 0.215
+    },
+    {
+      "answer": "Андрей: причина по текущим данным не подтверждена.",
+      "latency_seconds": 1.626,
+      "name": "wifi_cause_requires_evidence",
+      "pass": true,
+      "question": "Это Wi-Fi?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "snapshot_age_seconds": 0.875
+    },
+    {
+      "answer": "обхаркиватель: основные функции доступны. Недоступных функций в переданном снимке нет.",
+      "device_name": "обхаркиватель",
+      "latency_seconds": 2.585,
+      "name": "unlearned_device_read",
+      "pass": true,
+      "question": "Что с обхаркивателем?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "room_type_query": false,
+      "snapshot_age_seconds": 0.588,
+      "unlearned_profile": true
+    },
+    {
+      "answer": "зеркало: состояние «power_off». Недоступных функций в переданном снимке нет.",
+      "device_name": "зеркало",
+      "latency_seconds": 0.972,
+      "name": "unlearned_device_read",
+      "pass": true,
+      "question": "Что с зеркалом?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "room_type_query": false,
+      "snapshot_age_seconds": 0.234,
+      "unlearned_profile": true
+    },
+    {
+      "answer": "кабинет: основные функции доступны. Недоступны 2 функции (кабинет, лампа); причина по текущим данным не подтверждена, весь прибор неисправным не считаю.",
+      "device_name": "кабинет",
+      "latency_seconds": 1.579,
+      "name": "unlearned_room_type_read",
+      "pass": true,
+      "question": "Что со светом в кабинете?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "room_type_query": true,
+      "snapshot_age_seconds": 0.331,
+      "unlearned_profile": true
+    },
+    {
+      "answer": "Ванная туале: основные функции доступны. Недоступны 2 функции (ванная, туалет); причина по текущим данным не подтверждена, весь прибор неисправным не считаю.",
+      "device_name": "Ванная туале",
+      "latency_seconds": 2.225,
+      "name": "unlearned_room_type_read",
+      "pass": true,
+      "question": "Что с реле в туалете?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "room_type_query": true,
+      "snapshot_age_seconds": 0.023,
+      "unlearned_profile": true
+    },
+    {
+      "answer": "кавидор: состояние «2.0». Недоступных функций в переданном снимке нет.",
+      "device_name": "кавидор",
+      "latency_seconds": 1.18,
+      "name": "unlearned_room_type_read",
+      "pass": true,
+      "question": "Что с реле в коридоре?",
+      "real_model_calls": 1,
+      "reasons": [],
+      "room_type_query": true,
+      "snapshot_age_seconds": 0.361,
+      "unlearned_profile": true
+    }
+  ],
+  "control_checks": [
+    {
+      "clarification_options": [],
+      "device_name": "Dishwasher",
+      "live_service_calls": 0,
+      "name": "dishwasher_primary_power_selection",
+      "pass": true,
+      "selected_features": [
+        "Питание"
+      ],
+      "selection_status": "unique_primary"
+    },
+    {
+      "adapter_status": "not_verified",
+      "live_service_calls": 0,
+      "name": "transient_switch_is_not_verified",
+      "pass": true,
+      "simulated_service_calls": 1,
+      "verification_strength": "none"
+    },
+    {
+      "adapter_status": "accepted_unverified",
+      "live_service_calls": 0,
+      "name": "stateless_button_is_not_success",
+      "pass": true,
+      "simulated_service_calls": 1
+    }
+  ],
+  "external_yandex_skill_verified": false,
+  "learning_started": false,
+  "live_control_attempts": 0,
+  "live_service_calls": 0,
+  "maximum_latency_seconds": 15.652,
+  "passed_count": 11,
+  "read_only_live_ha": true,
+  "real_current_home_assistant": true,
+  "real_local_model": true,
+  "real_model_call_count": 10,
+  "room_type_pass_count": 3,
+  "schema_version": 1,
+  "scripted_model": false,
+  "stage": 69,
+  "status": "pass",
+  "unlearned_distinct_device_count": 6
+}

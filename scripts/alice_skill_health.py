@@ -122,7 +122,10 @@ def run_once(config: alice_skill_gateway.GatewayConfig) -> dict[str, object]:
     )
     passed: list[str] = []
     for name, probe in probes:
-        probe()
+        try:
+            probe()
+        except HealthError as error:
+            raise HealthError(name) from error
         passed.append(name)
     return {"schema_version": 1, "status": "healthy", "read_only": True, "probes": passed}
 
@@ -130,8 +133,14 @@ def run_once(config: alice_skill_gateway.GatewayConfig) -> dict[str, object]:
 def main() -> int:
     try:
         result = run_once(alice_skill_gateway.GatewayConfig.load())
-    except (HealthError, alice_skill_gateway.GatewayError):
-        print('{"schema_version":1,"status":"unhealthy","read_only":true}', file=sys.stderr)
+    except HealthError as error:
+        print(json.dumps({
+            "schema_version": 1, "status": "unhealthy", "read_only": True,
+            "failed_probe": str(error),
+        }, ensure_ascii=True, separators=(",", ":")), file=sys.stderr)
+        return 2
+    except alice_skill_gateway.GatewayError:
+        print('{"schema_version":1,"status":"unhealthy","read_only":true,"failed_probe":"configuration"}', file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
     return 0

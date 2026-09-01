@@ -98,8 +98,7 @@ done
 systemctl daemon-reload
 if $activate; then
   mapfile -t installed < <(find "$UNIT_DIR" -maxdepth 1 -type f \
-    \( -name 'home-butler-*.service' -o -name 'home-butler-*.timer' -o -name 'home-butler-*.path' \) \
-    -printf '%f\n' | sort)
+    -name 'home-butler-*' -printf '%f\n' | sort)
   for unit in "${installed[@]}"; do
     keep=false
     for expected in "${UNITS[@]}"; do
@@ -116,7 +115,16 @@ if $activate; then
   systemctl restart home-butler-inventory.service
   systemctl restart home-butler.service home-butler-local-chat.service \
     home-butler-alice-skill.service home-butler-alice-tunnel.service
-  systemctl start home-butler-alice-health.service
+  health_ok=false
+  for _attempt in 1 2 3; do
+    if systemctl start home-butler-alice-health.service; then
+      health_ok=true
+      break
+    fi
+    systemctl reset-failed home-butler-alice-health.service
+    sleep 2
+  done
+  $health_ok || { printf '%s\n' 'Alice health check failed.' >&2; exit 1; }
 fi
 
 printf 'Home Butler Stage 70 installed (activated=%s).\n' "$activate"

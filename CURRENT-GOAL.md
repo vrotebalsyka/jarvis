@@ -1,8 +1,7 @@
 # Current Goal — Stage 70 PURGE
 
-Статус: `READY_FOR_DEPLOYMENT`. Код, repository gates и live read-only
-acceptance пройдены. Активация очищенного runtime ожидает отдельного разрешения
-владельца на остановку старых units и перезапуск необходимых сервисов.
+Статус: `COMPLETE`. Код, repository gates, production activation и повторная
+live read-only acceptance пройдены. Stage 70 завершён; Stage 71 не начат.
 
 ## Обязательный отчёт
 
@@ -29,9 +28,9 @@ acceptance пройдены. Активация очищенного runtime о�
 
 ### LINES_AFTER
 
-- Все tracked files: 6 744 строки.
-- Production Python: 14 modules, 4 594 строки.
-- Tests Python: 7 файлов, 556 строк.
+- Все tracked files: 6 770 строк.
+- Production Python: 14 modules, 4 603 строки.
+- Tests Python: 7 файлов, 557 строк.
 
 ### PRODUCTION_IMPORT_GRAPH_BEFORE
 
@@ -71,7 +70,18 @@ alice_skill_gateway ┘                    │
   фраз на настоящем production path.
 - `wrong_device=0`, `invented_facts=0`, `lost_available_values=0`.
 - `technical_leaks=0`, `ha_service_calls=0`; роботы не запускались.
+- После production activation: 178 HA entities, 50 физических устройств,
+  `model_fallbacks=1`; повторный прогон имеет статус `pass`.
 
-После активации требуется подтвердить закрытый набор systemd units, свежий
-inventory, Web, Alice local/public probes и повторить live acceptance. После
-Stage 70 остановиться; Stage 71 не начинать.
+### PRODUCTION_ACTIVATION
+
+- Installer завершился успешно с `--activate`; закрытый набор содержит ровно
+  12 Home Butler systemd units, устаревшие units и backup удалены.
+- Ollama, inventory timer, Web, Alice skill/tunnel, health timer и finalize
+  paths активны; failed units отсутствуют.
+- Health probes `local_gateway`, `local_model`, `ha_read`, `public_gateway`
+  завершились со статусом `healthy`; Web вернул HTTP 200.
+- Inventory свежий, принадлежит `homebutler`, mode `0600`; production scripts
+  синхронизированы с checkout.
+
+После Stage 70 остановиться; Stage 71 не начинать.

@@ -1,6 +1,6 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
-Description=Home Butler exact private Alice webhook health and bounded recovery
+Description=Home Butler read-only Alice path health probe
 After=network-online.target tailscaled.service home-butler-alice-skill.service home-butler-alice-tunnel.service
 Wants=network-online.target tailscaled.service home-butler-alice-skill.service home-butler-alice-tunnel.service
 StartLimitIntervalSec=0
@@ -12,14 +12,11 @@ Group=root
 WorkingDirectory=/opt/home-butler
 Environment=HOME=/root
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/usr/bin/python3 /opt/home-butler/scripts/alice_skill_health.py --recover
+ExecStart=/usr/bin/python3 /opt/home-butler/scripts/alice_skill_health.py
 LoadCredential=alice-skill-secret:/root/Jarvis/home-butler/secrets/alice-skill-secret
 LoadCredential=alice-skill-secret-next:/root/Jarvis/home-butler/secrets/alice-skill-secret-next
 LoadCredential=alice-skill-id:/root/Jarvis/home-butler/secrets/alice-skill-id
 LoadCredential=alice-owner-ids:/root/Jarvis/home-butler/secrets/alice-owner-ids
-RuntimeDirectory=home-butler-alice-health
-RuntimeDirectoryMode=0700
-RuntimeDirectoryPreserve=yes
 TimeoutStartSec=55
 UMask=0077
 NoNewPrivileges=yes
@@ -29,7 +26,6 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/run/home-butler-alice-health
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

@@ -1,10 +1,10 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
-Description=Check each private Alice voice component every ten seconds
+Description=Probe the private Alice path every minute
 
 [Timer]
 OnBootSec=30s
-OnUnitActiveSec=10s
+OnUnitActiveSec=1min
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=false

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Home Health Audit"
-  short_description: "Read-only health report for home services"
-  default_prompt: "Use $home-health-audit to inspect local and configured home services without changing anything."

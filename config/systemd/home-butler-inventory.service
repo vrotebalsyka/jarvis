@@ -1,8 +1,8 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
 Description=Home Butler private Home Assistant inventory refresh
-After=network-online.target home-butler-incident-monitor.service
-Wants=network-online.target home-butler-incident-monitor.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
@@ -11,7 +11,7 @@ Group=homebutler
 WorkingDirectory=/opt/home-butler
 Environment=HOME=/home/homebutler
 Environment=PYTHONDONTWRITEBYTECODE=1
-Environment=HOME_BUTLER_INCIDENT_STATE_DIR=/home/homebutler/.local/state/home-butler/incidents
+Environment=HOME_BUTLER_INVENTORY_FILE=/home/homebutler/.local/state/home-butler/inventory.json
 ExecStart=/usr/bin/python3 /opt/home-butler/scripts/home_assistant_inventory.py
 LoadCredential=home-assistant.token:/root/Jarvis/home-butler/secrets/home-assistant.token
 TimeoutStartSec=45
@@ -23,7 +23,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/homebutler/.local/state/home-butler/incidents
+ReadWritePaths=/home/homebutler/.local/state/home-butler
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

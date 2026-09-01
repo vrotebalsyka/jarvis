@@ -1,4 +1,0 @@
-interface:
-  display_name: "Diagnose Internet"
-  short_description: "Separate route, IP, DNS, and endpoint faults"
-  default_prompt: "Use $diagnose-internet to determine which read-only connectivity layer is failing."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Diagnose Zigbee2MQTT"
-  short_description: "Read-only Zigbee2MQTT freshness checks"
-  default_prompt: "Use $diagnose-zigbee2mqtt to inspect Zigbee2MQTT status without changing devices."

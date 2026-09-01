@@ -1,8 +1,8 @@
 # Managed by /root/Jarvis/home-butler/scripts/install-home-butler-service.sh
 [Unit]
 Description=Home Butler protected local-network browser chat
-After=network-online.target home-butler.service
-Wants=network-online.target home-butler.service
+After=network-online.target ollama.service
+Wants=network-online.target ollama.service
 
 [Service]
 Type=simple
@@ -17,9 +17,6 @@ Environment=HOME_BUTLER_LOCAL_CHAT_ALLOWED_HOSTS=127.0.0.1:8780,localhost:8780
 Environment=HOME_BUTLER_LOCAL_CHAT_ALLOWED_NETWORKS=127.0.0.0/8,172.16.0.0/12
 Environment=HOME_BUTLER_LAN_CHAT_BACKEND_PORT=8781
 Environment=HOME_BUTLER_LAN_CHAT_ALLOWED_HOSTS=192.168.1.175:8780
-Environment=HOME_BUTLER_INSTRUCTIONS_FILE=/home/homebutler/.config/home-butler/HOME-BUTLER-INSTRUCTIONS.md
-Environment=HOME_BUTLER_MODEL_WORKSPACE=/home/homebutler/.local/share/home-butler/model-workspace
-Environment=HOME_BUTLER_MEMORY_DB=/home/homebutler/.local/state/home-butler/memory/memory.db
 ExecStart=/usr/bin/python3 /opt/home-butler/scripts/local_chat_gateway.py
 LoadCredential=home-assistant.token:/root/Jarvis/home-butler/secrets/home-assistant.token
 LoadCredential=local-chat-lan.key:/root/Jarvis/home-butler/secrets/local-chat-lan.key
@@ -35,7 +32,6 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/homebutler/.local/share/home-butler/model-workspace /home/homebutler/.local/state/home-butler/memory /home/homebutler/.local/state/home-butler/scheduler
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

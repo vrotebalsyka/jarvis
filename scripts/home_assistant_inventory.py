@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Build a private sanitized HA integration and LAN identity inventory."""
+"""Build the one private Home Assistant physical-device inventory."""
 
 from __future__ import annotations
 
 import hashlib
-import http.client
-import ipaddress
 import json
 import os
 import re
-import socket
-import sqlite3
 import stat
 import sys
 import tempfile
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
+
+try:
+    import websocket  # type: ignore[import-not-found]
+except ImportError:  # deployment preflight reports this dependency
+    websocket = None
 
 
 sys.dont_write_bytecode = True
@@ -25,331 +25,90 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import home_assistant_read as ha_read  # noqa: E402
-import incident_monitor  # noqa: E402
 import safe_attribute_sanitizer as attribute_sanitizer  # noqa: E402
 
 
-INVENTORY_NAME = "inventory.json"
-PLATFORM_RE = re.compile(r"^[a-z0-9_]{1,64}$")
-DEVICE_ID_RE = re.compile(r"^[a-f0-9]{32}$")
-ENTRY_ID_RE = re.compile(r"^(?:[A-Z0-9]{26}|[a-f0-9]{32})$")
-MAC_RE = re.compile(r"^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$")
-LOCAL_NETWORK = ipaddress.ip_network("192.168.1.0/24")
-MAX_COMMAND_MESSAGES = 64
-MAX_DIAGNOSTICS_BYTES = 8 * 1_048_576
+INVENTORY_SCHEMA_VERSION = 4
 MAX_INVENTORY_BYTES = 8 * 1_048_576
-TUYA_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
-TUYA_REGISTRY_PLATFORMS = {"tuya", "tuya_local", "localtuya"}
-XIAOMI_IDENTIFIER_RE = re.compile(
-    r"^((?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2})-[A-Za-z0-9_.-]{3,64}$"
+MAX_MESSAGE_BYTES = 4 * 1_048_576
+MAX_COMMAND_MESSAGES = 64
+DEFAULT_INVENTORY_PATH = Path(
+    "/home/homebutler/.local/state/home-butler/inventory.json"
 )
-VERSION_RE = re.compile(r"^v?(\d{1,4})\.(\d{1,4})\.(\d{1,4})$")
-LOCAL_TUYA_UPDATE_ENTITY_ID = "update.local_tuya_update"
-TUYA_LOCAL_UPDATE_ENTITY_ID = "update.tuya_local_update"
-XIAOMI_MIOT_UPDATE_ENTITY_ID = "update.xiaomi_miot_update"
-REVIEWED_LOCAL_TUYA_VERSION = "v5.2.5"
-TUYA_LOCAL_IP_REPAIR_VERSION = "2026.7.2"
-TUYA_LOCAL_MINIMUM_CORE_VERSION = "2026.6.0"
-REVIEWED_XIAOMI_MIOT_VERSION = "v1.1.4"
-RECENT_BACKUP_SECONDS = 24 * 60 * 60
-RESTRICTED_DEVICE_DOMAINS = {
-    "alarm_control_panel", "climate", "lock", "valve", "water_heater",
-}
-RESTRICTED_DEVICE_PLATFORMS = {"midea_ac_lan"}
-RECOVERY_MODES = {
-    "localtuya": ("local_rebind_reload", True),
-    "tuya_local": ("entry_reload", True),
-    "midea_ac_lan": ("idle_entry_reload", True),
-    "yandex_station": ("cloud_backoff_entry_reload", True),
-    "yandex_smart_home": ("cloud_backoff_entry_reload", True),
-    "xiaomi_miot": ("permissioned_entry_reload", False),
-    "tuya": ("cloud_backoff", False),
-}
-INVENTORY_SCHEMA_VERSION = 3
-SAFE_SEMANTIC_ATTRIBUTES = frozenset({
-    "device_class",
-    "unit_of_measurement",
-    "state_class",
-    "supported_features",
-    "options",
-    "min",
-    "max",
-    "step",
-    "mode",
-    "percentage",
-    "battery_level",
-    "entity_category",
-})
-CONTROL_DOMAINS = frozenset({
-    "alarm_control_panel", "button", "climate", "cover", "fan", "humidifier",
-    "light", "lock", "number", "select", "switch", "vacuum", "valve",
-    "water_heater",
-})
-MEASUREMENT_DEVICE_CLASSES = frozenset({
-    "apparent_power", "aqi", "atmospheric_pressure", "battery", "carbon_dioxide",
-    "carbon_monoxide", "current", "data_rate", "distance", "duration", "energy",
-    "energy_storage", "frequency", "gas", "humidity", "illuminance", "moisture",
-    "monetary", "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone",
-    "pm1", "pm10", "pm25", "power", "power_factor", "precipitation",
-    "precipitation_intensity", "pressure", "reactive_energy", "reactive_power",
-    "signal_strength", "sound_pressure", "speed", "sulphur_dioxide", "temperature",
-    "volatile_organic_compounds", "volatile_organic_compounds_parts", "voltage",
-    "volume", "volume_flow_rate", "volume_storage", "water", "weight", "wind_speed",
-})
-DIAGNOSTIC_DEVICE_CLASSES = frozenset({
-    "battery", "battery_charging", "connectivity", "problem", "safety", "tamper",
+ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+PLATFORM_RE = re.compile(r"^[a-z0-9_]{1,64}$")
+PHYSICAL_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
+SAFE_ATTRIBUTE_KEYS = frozenset({
+    "device_class", "unit_of_measurement", "state_class", "options",
 })
 
 
 class InventoryError(RuntimeError):
-    """Secret-free inventory failure."""
+    """A secret-free inventory failure."""
 
 
-def _safe_registry_text(value: Any, *, maximum: int = 160) -> str | None:
-    if not isinstance(value, str) or len(value) > maximum:
-        return None
+def inventory_path() -> Path:
+    raw = os.environ.get("HOME_BUTLER_INVENTORY_FILE", "")
+    return Path(raw) if raw else DEFAULT_INVENTORY_PATH
+
+
+def _json_message(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, str):
+        raise InventoryError("invalid Home Assistant websocket message")
+    encoded = raw.encode("utf-8", errors="strict")
+    if not encoded or len(encoded) > MAX_MESSAGE_BYTES:
+        raise InventoryError("invalid Home Assistant websocket message")
     try:
-        tagged = attribute_sanitizer.sanitize_value(value)
-    except attribute_sanitizer.AttributeSanitizerError:
-        return None
-    return attribute_sanitizer.untrusted_text(tagged)
+        parsed = ha_read.strict_json_loads(encoded)
+    except ha_read.AdapterError as error:
+        raise InventoryError("invalid Home Assistant websocket message") from error
+    if not isinstance(parsed, dict):
+        raise InventoryError("invalid Home Assistant websocket message")
+    return parsed
 
 
-def _safe_aliases(value: Any) -> list[str]:
-    if not isinstance(value, list) or len(value) > 32:
-        return []
-    result: list[str] = []
-    for item in value:
-        safe = _safe_registry_text(item, maximum=100)
-        if safe is not None:
-            result.append(safe)
-    return list(dict.fromkeys(result))[:16]
-
-
-def _semantic_role(entity_id: str, attributes: dict[str, Any]) -> str:
-    domain = entity_id.split(".", 1)[0]
-    device_class = attribute_sanitizer.untrusted_text(
-        attributes.get("device_class")
-    )
-    entity_category = attribute_sanitizer.untrusted_text(
-        attributes.get("entity_category")
-    )
-    if entity_category == "diagnostic":
-        return "diagnostic"
-    if domain == "update":
-        return "maintenance"
-    if domain == "device_tracker" or device_class == "connectivity":
-        return "connectivity"
-    if device_class in DIAGNOSTIC_DEVICE_CLASSES and domain == "binary_sensor":
-        return "diagnostic"
-    if domain == "sensor" or device_class in MEASUREMENT_DEVICE_CLASSES:
-        return "measurement"
-    if domain in CONTROL_DOMAINS:
-        return "control"
-    if domain in {"binary_sensor", "event"}:
-        return "state"
-    return "state"
-
-
-def _entity_capability(entity_id: str, attributes: dict[str, Any]) -> str:
-    domain = entity_id.split(".", 1)[0]
-    if domain == "button":
-        return "press"
-    if domain in {"number", "select"}:
-        return "set_value"
-    if domain in CONTROL_DOMAINS:
-        return "control"
-    if domain == "update":
-        return "observe_update"
-    if _semantic_role(entity_id, attributes) == "measurement":
-        return "measure"
-    return "observe"
-
-
-def _availability(state_kind: object) -> str:
-    if state_kind in {"unavailable", "absent"}:
-        return "unavailable"
-    if state_kind == "redacted":
-        return "redacted"
-    return "available"
-
-
-def _version_tuple(value: Any) -> tuple[int, int, int] | None:
-    if not isinstance(value, str):
-        return None
-    match = VERSION_RE.fullmatch(value)
-    if match is None:
-        return None
-    return tuple(int(part) for part in match.groups())
-
-
-def _update_versions(raw_states: Any, entity_id: str) -> tuple[str | None, str | None]:
-    if not isinstance(raw_states, list):
-        return None, None
-    matches = [
-        item for item in raw_states
-        if isinstance(item, dict) and item.get("entity_id") == entity_id
-    ]
-    if len(matches) != 1:
-        return None, None
-    attributes = matches[0].get("attributes")
-    if not isinstance(attributes, dict):
-        return None, None
-    installed = attributes.get("installed_version")
-    latest = attributes.get("latest_version")
-    if _version_tuple(installed) is None or _version_tuple(latest) is None:
-        return None, None
-    return installed, latest
-
-
-def _integration_capabilities(
-    raw_states: Any,
-    core_config: Any,
-) -> dict[str, object]:
-    """Return reviewed, private capability facts without integration secrets."""
-    core_version = core_config.get("version") if isinstance(core_config, dict) else None
-    if _version_tuple(core_version) is None:
-        core_version = None
-
-    local_installed, local_latest = _update_versions(
-        raw_states, LOCAL_TUYA_UPDATE_ENTITY_ID
-    )
-    local_reviewed = local_installed == REVIEWED_LOCAL_TUYA_VERSION
-    localtuya = {
-        "installed_version": local_installed,
-        "latest_version": local_latest,
-        "ip_recovery_mode": (
-            "stable_id_udp_auto_update" if local_reviewed else "review_required"
-        ),
-        "review_status": "reviewed" if local_reviewed else "review_required",
-    }
-
-    tuya_installed, tuya_latest = _update_versions(
-        raw_states, TUYA_LOCAL_UPDATE_ENTITY_ID
-    )
-    installed_tuple = _version_tuple(tuya_installed)
-    repair_tuple = _version_tuple(TUYA_LOCAL_IP_REPAIR_VERSION)
-    core_tuple = _version_tuple(core_version)
-    minimum_core_tuple = _version_tuple(TUYA_LOCAL_MINIMUM_CORE_VERSION)
-    automatic_repair = (
-        installed_tuple is not None
-        and repair_tuple is not None
-        and installed_tuple >= repair_tuple
-    )
-    if automatic_repair:
-        upgrade_status = "automatic_ip_recovery_available"
-    elif (
-        tuya_latest == TUYA_LOCAL_IP_REPAIR_VERSION
-        and core_tuple is not None
-        and minimum_core_tuple is not None
-        and core_tuple < minimum_core_tuple
-    ):
-        upgrade_status = "core_upgrade_required"
-    elif tuya_latest == TUYA_LOCAL_IP_REPAIR_VERSION and core_tuple is not None:
-        upgrade_status = "backup_required_before_update"
-    else:
-        upgrade_status = "review_required"
-    tuya_local = {
-        "installed_version": tuya_installed,
-        "latest_version": tuya_latest,
-        "core_version": core_version,
-        "automatic_ip_recovery": automatic_repair,
-        "reviewed_target_version": TUYA_LOCAL_IP_REPAIR_VERSION,
-        "minimum_core_version": TUYA_LOCAL_MINIMUM_CORE_VERSION,
-        "upgrade_status": upgrade_status,
-    }
-
-    xiaomi_installed, xiaomi_latest = _update_versions(
-        raw_states, XIAOMI_MIOT_UPDATE_ENTITY_ID
-    )
-    xiaomi_reviewed = xiaomi_installed == REVIEWED_XIAOMI_MIOT_VERSION
-    xiaomi_miot = {
-        "installed_version": xiaomi_installed,
-        "latest_version": xiaomi_latest,
-        "reviewed_version": REVIEWED_XIAOMI_MIOT_VERSION,
-        "bounded_config_entry_reload": xiaomi_reviewed,
-        "review_status": "reviewed" if xiaomi_reviewed else "review_required",
-        "automatic_recovery_enabled": False,
-    }
-    return {
-        "localtuya": localtuya,
-        "tuya_local": tuya_local,
-        "xiaomi_miot": xiaomi_miot,
-    }
-
-
-def _backup_readiness(
-    backup_info: Any,
-    core_version: str | None,
-    *,
-    now: datetime | None = None,
-) -> dict[str, object]:
-    """Reduce admin-only backup metadata to a secret-free upgrade preflight."""
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    if not isinstance(backup_info, dict):
-        return {"status": "unavailable", "restore_tested": False}
-    agent_errors = backup_info.get("agent_errors")
-    backups = backup_info.get("backups")
-    if (
-        backup_info.get("state") != "idle"
-        or not isinstance(agent_errors, dict)
-        or agent_errors
-        or not isinstance(backups, list)
-        or len(backups) > 1_024
-    ):
-        return {"status": "not_ready", "restore_tested": False}
-    valid: list[tuple[datetime, dict[str, Any]]] = []
-    for item in backups:
-        if not isinstance(item, dict):
-            continue
-        try:
-            date = datetime.fromisoformat(str(item.get("date")).replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if date.tzinfo is None:
-            continue
-        date = date.astimezone(timezone.utc)
-        failed_lists = (
-            item.get("failed_agent_ids", []),
-            item.get("failed_addons", []),
-            item.get("failed_folders", []),
+def _connect(config: ha_read.AdapterConfig) -> Any:
+    if websocket is None:
+        raise InventoryError("websocket client is unavailable")
+    scheme = "wss" if config.scheme == "https" else "ws"
+    try:
+        return websocket.create_connection(
+            f"{scheme}://{config.host}:{config.port}/api/websocket",
+            timeout=10,
+            suppress_origin=True,
+            http_proxy_host=None,
+            http_proxy_port=None,
+            http_no_proxy=[config.host],
         )
-        if (
-            date > current
-            or item.get("homeassistant_version") != core_version
-            or item.get("homeassistant_included") is not True
-            or item.get("database_included") is not True
-            or any(not isinstance(value, list) or value for value in failed_lists)
-        ):
-            continue
-        valid.append((date, item))
-    if not valid:
-        return {"status": "missing_complete_backup", "restore_tested": False}
-    latest, _item = max(valid, key=lambda pair: pair[0])
-    age_seconds = int((current - latest).total_seconds())
-    return {
-        "status": (
-            "recent_complete_backup"
-            if age_seconds <= RECENT_BACKUP_SECONDS
-            else "stale_complete_backup"
-        ),
-        "latest_backup_at": latest.isoformat(timespec="seconds"),
-        "core_version": core_version,
-        "age_seconds": age_seconds,
-        "restore_tested": False,
-    }
+    except Exception as error:
+        raise InventoryError("Home Assistant websocket is unreachable") from error
+
+
+def _authenticate(socket: Any, token: str) -> None:
+    required = _json_message(socket.recv())
+    if required.get("type") != "auth_required":
+        raise InventoryError("Home Assistant authentication protocol failed")
+    socket.send(json.dumps(
+        {"type": "auth", "access_token": token},
+        ensure_ascii=True, separators=(",", ":"),
+    ))
+    if _json_message(socket.recv()).get("type") != "auth_ok":
+        raise InventoryError("Home Assistant authentication failed")
 
 
 def _command(socket: Any, identifier: int, command_type: str) -> Any:
-    socket.send(
-        json.dumps(
-            {"id": identifier, "type": command_type},
-            ensure_ascii=True,
-            separators=(",", ":"),
-        )
-    )
+    if command_type not in {
+        "config/entity_registry/list",
+        "config/device_registry/list",
+        "config/area_registry/list",
+    }:
+        raise InventoryError("inventory command is not allowed")
+    socket.send(json.dumps(
+        {"id": identifier, "type": command_type},
+        ensure_ascii=True, separators=(",", ":"),
+    ))
     for _attempt in range(MAX_COMMAND_MESSAGES):
-        response = incident_monitor._message(socket.recv())
+        response = _json_message(socket.recv())
         if response.get("id") != identifier:
             continue
         if response.get("type") != "result" or response.get("success") is not True:
@@ -358,1308 +117,334 @@ def _command(socket: Any, identifier: int, command_type: str) -> Any:
     raise InventoryError("Home Assistant inventory response is missing")
 
 
-def _valid_entry_id(value: Any) -> str | None:
-    return value if isinstance(value, str) and ENTRY_ID_RE.fullmatch(value) else None
+def _safe_name(value: Any) -> str | None:
+    return ha_read.sanitize_friendly_name(value)
 
 
-def _vendor_kind(value: Any) -> str:
-    text = value.casefold() if isinstance(value, str) else ""
-    if "tuya" in text:
-        return "tuya"
-    if "midea" in text:
-        return "midea"
-    if "xiaomi" in text:
-        return "xiaomi"
-    if "espressif" in text:
-        return "espressif"
-    return "other"
-
-
-def _registry_mac(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.replace("-", ":").upper()
-    return normalized if MAC_RE.fullmatch(normalized) else None
-
-
-def _device_registry_macs(connections: Any) -> set[str]:
-    if not isinstance(connections, list) or len(connections) > 64:
-        return set()
-    result: set[str] = set()
-    for pair in connections:
-        if not isinstance(pair, list) or len(pair) != 2:
-            continue
-        if str(pair[0]).casefold() != "mac":
-            continue
-        mac = _registry_mac(pair[1])
-        if mac is not None:
-            result.add(mac)
-    return result
-
-
-def _build_device_network_bindings(
-    device_macs: dict[str, set[str]],
-    device_physical_hashes: dict[str, str],
-    device_entries: dict[str, list[str]],
-    network: list[dict[str, str]],
-    previous_bindings: Any,
-) -> list[dict[str, object]]:
-    """Bind any unambiguous HA registry MAC to the private LAN scanner."""
-    current_by_mac = {item["mac"]: item["ip"] for item in network}
-    previous_by_hash: dict[str, dict[str, object]] = {}
-    if isinstance(previous_bindings, list):
-        for item in previous_bindings:
-            if not isinstance(item, dict):
-                continue
-            physical_hash = item.get("physical_device_hash")
-            if isinstance(physical_hash, str) and re.fullmatch(
-                r"[a-f0-9]{64}", physical_hash
-            ):
-                previous_by_hash[physical_hash] = item
-
-    grouped: dict[str, dict[str, object]] = {}
-    for device_id, macs in device_macs.items():
-        physical_hash = device_physical_hashes.get(device_id)
-        if physical_hash is None:
-            continue
-        item = grouped.setdefault(
-            physical_hash,
-            {"device_ids": set(), "config_entry_ids": set(), "macs": set()},
-        )
-        item["device_ids"].add(device_id)  # type: ignore[union-attr]
-        item["config_entry_ids"].update(  # type: ignore[union-attr]
-            device_entries.get(device_id, [])
-        )
-        item["macs"].update(macs)  # type: ignore[union-attr]
-
-    bindings: list[dict[str, object]] = []
-    for physical_hash, item in grouped.items():
-        macs = item["macs"]
-        if not isinstance(macs, set) or len(macs) != 1:
-            continue
-        mac = next(iter(macs))
-        observed_ip = current_by_mac.get(mac)
-        previous = previous_by_hash.get(physical_hash, {})
-        previous_ip = previous.get("observed_ip") or previous.get("previous_ip")
-        previous_misses = previous.get("network_miss_count", 0)
-        if not isinstance(previous_misses, int) or isinstance(previous_misses, bool):
-            previous_misses = 0
-        status = "not_observed"
-        network_miss_count = min(1000, previous_misses + 1)
-        if observed_ip is not None:
-            status = (
-                "ip_changed"
-                if isinstance(previous_ip, str) and previous_ip != observed_ip
-                else "stable"
-            )
-            network_miss_count = 0
-        bindings.append(
-            {
-                "physical_device_hash": physical_hash,
-                "device_ids": sorted(item["device_ids"]),
-                "config_entry_ids": sorted(item["config_entry_ids"]),
-                "mac": mac,
-                "observed_ip": observed_ip,
-                "previous_ip": previous_ip if isinstance(previous_ip, str) else None,
-                "status": status,
-                "network_miss_count": network_miss_count,
-            }
-        )
-    return sorted(bindings, key=lambda item: str(item["physical_device_hash"]))
-
-
-def _merge_identity_network_bindings(
-    bindings: list[dict[str, object]],
-    identity_bindings: list[dict[str, object]],
-    device_physical_hashes: dict[str, str],
-    device_entries: dict[str, list[str]],
-) -> list[dict[str, object]]:
-    """Add integration-proven IP/MAC identities to the physical-device map."""
-    merged = {str(item["physical_device_hash"]): dict(item) for item in bindings}
-    for identity in identity_bindings:
-        device_id = identity.get("device_id")
-        mac = identity.get("mac")
-        if (
-            not isinstance(device_id, str)
-            or device_id not in device_physical_hashes
-            or not isinstance(mac, str)
-            or MAC_RE.fullmatch(mac) is None
-        ):
-            continue
-        physical_hash = device_physical_hashes[device_id]
-        existing = merged.get(physical_hash)
-        if existing is not None and existing.get("mac") != mac:
-            # Multiple hardware identities for one HA aggregate are ambiguous.
-            continue
-        observed_ip = identity.get("observed_ip")
-        configured_ip = identity.get("configured_ip")
-        previous_ip = (
-            existing.get("previous_ip") if existing is not None else configured_ip
-        )
-        status = identity.get("status")
-        if status not in {"stable", "ip_changed", "not_observed"}:
-            status = "stable" if isinstance(observed_ip, str) else "not_observed"
-        network_miss_count = identity.get("network_miss_count")
-        if not isinstance(network_miss_count, int) or isinstance(network_miss_count, bool):
-            network_miss_count = (
-                existing.get("network_miss_count", 0)
-                if existing is not None else 0
-            )
-        if not isinstance(network_miss_count, int) or isinstance(network_miss_count, bool):
-            network_miss_count = 0
-        entry_ids = set(device_entries.get(device_id, []))
-        identity_entry = identity.get("config_entry_id")
-        if isinstance(identity_entry, str):
-            entry_ids.add(identity_entry)
-        device_ids = {device_id}
-        if existing is not None:
-            device_ids.update(
-                value for value in existing.get("device_ids", [])
-                if isinstance(value, str)
-            )
-            entry_ids.update(
-                value for value in existing.get("config_entry_ids", [])
-                if isinstance(value, str)
-            )
-        merged[physical_hash] = {
-            "physical_device_hash": physical_hash,
-            "device_ids": sorted(device_ids),
-            "config_entry_ids": sorted(entry_ids),
-            "mac": mac,
-            "observed_ip": observed_ip if isinstance(observed_ip, str) else None,
-            "previous_ip": previous_ip if isinstance(previous_ip, str) else None,
-            "status": status,
-            "network_miss_count": network_miss_count,
-        }
-    return sorted(merged.values(), key=lambda item: str(item["physical_device_hash"]))
-
-
-def _device_safety_class(entity_ids: list[str], platforms: set[str]) -> str:
-    domains = {entity_id.split(".", 1)[0] for entity_id in entity_ids}
-    if domains & RESTRICTED_DEVICE_DOMAINS or platforms & RESTRICTED_DEVICE_PLATFORMS:
-        return "restricted"
-    if "light" in domains:
-        return "light"
-    if "switch" in domains:
-        return "ordinary_relay"
-    if domains and domains <= {"sensor", "binary_sensor", "number", "select", "update"}:
-        return "sensor"
-    return "unknown"
-
-
-def _common_display_name(entities: list[dict[str, object]]) -> str:
-    names = [
-        str(item["friendly_name"])
-        for item in entities
-        if isinstance(item.get("friendly_name"), str)
-    ]
-    if names:
-        tokenized = [name.split() for name in names]
-        shared: list[str] = []
-        for values in zip(*tokenized):
-            if len({value.casefold() for value in values}) != 1:
-                break
-            shared.append(values[0])
-        if shared:
-            return " ".join(shared)[:100]
-        return min(names, key=lambda value: (len(value), value.casefold()))[:100]
-    entity_ids = [str(item["entity_id"]) for item in entities]
-    return incident_monitor._device_display_name(entity_ids)
-
-
-def _integration_profiles(
-    entries: dict[str, dict[str, object]], entity_platforms: set[str]
-) -> list[dict[str, object]]:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for item in entries.values():
-        grouped.setdefault(str(item["domain"]), []).append(item)
-    for platform in entity_platforms:
-        grouped.setdefault(platform, [])
-    profiles: list[dict[str, object]] = []
-    for domain, domain_entries in sorted(grouped.items()):
-        recovery_mode, automatic = RECOVERY_MODES.get(
-            domain, ("diagnose_only", False)
-        )
-        loaded = sum(item.get("state") == "loaded" for item in domain_entries)
-        unloadable = sum(item.get("supports_unload") is True for item in domain_entries)
-        profiles.append(
-            {
-                "domain": domain,
-                "entry_count": len(domain_entries),
-                "loaded_entry_count": loaded,
-                "unloadable_entry_count": unloadable,
-                "recovery_mode": recovery_mode,
-                "automatic_recovery_allowed": bool(
-                    automatic
-                    and domain_entries
-                    and unloadable == len(domain_entries)
-                ),
-            }
-        )
-    return profiles
-
-
-def _physical_devices(
-    entities: list[dict[str, object]],
-    entries: dict[str, dict[str, object]],
-    network_bindings: list[dict[str, object]],
-    device_metadata: dict[str, dict[str, object]] | None = None,
-) -> list[dict[str, object]]:
-    metadata = device_metadata or {}
-    network_by_hash = {
-        str(item["physical_device_hash"]): item for item in network_bindings
-    }
-    groups: dict[str, list[dict[str, object]]] = {}
-    for item in entities:
-        physical_hash = item.get("physical_device_hash")
-        if isinstance(physical_hash, str):
-            groups.setdefault(physical_hash, []).append(item)
-    result: list[dict[str, object]] = []
-    for physical_hash, members in sorted(groups.items()):
-        entity_ids = sorted(str(item["entity_id"]) for item in members)
-        platforms = {str(item["platform"]) for item in members}
-        entry_ids = sorted({
-            str(entry_id)
-            for item in members
-            for entry_id in item.get("config_entry_ids", [])
-            if isinstance(entry_id, str)
-        })
-        config_domains = sorted({
-            str(entries[entry_id]["domain"])
-            for entry_id in entry_ids if entry_id in entries
-        })
-        kinds = [str(item.get("state_kind", "absent")) for item in members]
-        network = network_by_hash.get(physical_hash)
-        device_ids = sorted({
-            str(item["device_id"])
-            for item in members
-            if isinstance(item.get("device_id"), str)
-        })
-        metadata_items = [metadata[item] for item in device_ids if item in metadata]
-        device_names = sorted({
-            str(item["display_name"])
-            for item in metadata_items
-            if isinstance(item.get("display_name"), str)
-        })
-        area_names = sorted({
-            str(item["area_name"])
-            for item in metadata_items
-            if isinstance(item.get("area_name"), str)
-        })
-        area_aliases = sorted({
-            str(alias)
-            for item in metadata_items
-            for alias in item.get("area_aliases", [])
-            if isinstance(alias, str)
-        })
-        manufacturers = sorted({
-            str(item["manufacturer"])
-            for item in metadata_items
-            if isinstance(item.get("manufacturer"), str)
-        })
-        models = sorted({
-            str(item["model"])
-            for item in metadata_items
-            if isinstance(item.get("model"), str)
-        })
-        software_versions = sorted({
-            str(item["software_version"])
-            for item in metadata_items
-            if isinstance(item.get("software_version"), str)
-        })
-        result.append(
-            {
-                "physical_device_hash": physical_hash,
-                "display_name": device_names[0] if device_names else _common_display_name(members),
-                "area_names": area_names,
-                "area_aliases": area_aliases,
-                "manufacturers": manufacturers,
-                "models": models,
-                "software_versions": software_versions,
-                "entity_ids": entity_ids,
-                "entity_count": len(entity_ids),
-                "available_entity_count": sum(
-                    kind not in {"unavailable", "absent", "redacted"}
-                    for kind in kinds
-                ),
-                "unavailable_entity_count": sum(
-                    kind in {"unavailable", "absent"} for kind in kinds
-                ),
-                "platforms": sorted(platforms),
-                "config_entry_ids": entry_ids,
-                "config_domains": config_domains,
-                "semantic_roles": sorted({
-                    str(item.get("semantic_role", "state")) for item in members
-                }),
-                "capabilities": sorted({
-                    str(item.get("capability", "observe")) for item in members
-                }),
-                "safety_class": _device_safety_class(entity_ids, platforms),
-                "network_status": (
-                    str(network["status"]) if network is not None else "unknown"
-                ),
-                "network_miss_count": (
-                    int(network.get("network_miss_count", 0))
-                    if network is not None else 0
-                ),
-            }
-        )
-    return result
-
-
-def _network_devices(raw_states: Any) -> list[dict[str, str]]:
-    if not isinstance(raw_states, list):
-        raise InventoryError("network scanner state is invalid")
-    scanner = next(
-        (
-            item for item in raw_states
-            if isinstance(item, dict) and item.get("entity_id") == "sensor.network_scanner"
-        ),
-        None,
-    )
-    if scanner is None:
+def _safe_names(value: Any, *, limit: int = 32) -> list[str]:
+    if not isinstance(value, list) or len(value) > limit:
         return []
-    attributes = scanner.get("attributes")
-    devices = attributes.get("devices") if isinstance(attributes, dict) else None
-    if not isinstance(devices, list) or len(devices) > 1_024:
-        raise InventoryError("network scanner state is invalid")
-    sanitized: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for item in devices:
-        if not isinstance(item, dict):
-            raise InventoryError("network scanner state is invalid")
-        ip_text = item.get("ip")
-        mac_text = item.get("mac")
-        if not isinstance(ip_text, str) or not isinstance(mac_text, str):
-            continue
-        try:
-            address = ipaddress.ip_address(ip_text)
-        except ValueError:
-            continue
-        normalized_mac = mac_text.upper()
-        if address not in LOCAL_NETWORK or not MAC_RE.fullmatch(normalized_mac):
-            continue
-        identity = (str(address), normalized_mac)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        sanitized.append(
-            {
-                "ip": str(address),
-                "mac": normalized_mac,
-                "vendor_kind": _vendor_kind(item.get("vendor")),
-            }
-        )
-    return sorted(sanitized, key=lambda item: ipaddress.ip_address(item["ip"]))
+    result: list[str] = []
+    for item in value:
+        safe = _safe_name(item)
+        if safe is not None and safe not in result:
+            result.append(safe)
+    return result
 
 
-def _identity_hash(platform: str, identifier: str) -> str:
-    if platform not in {"localtuya", "tuya_local"} or not TUYA_ID_RE.fullmatch(identifier):
-        raise InventoryError("Tuya identity is invalid")
-    return hashlib.sha256(f"{platform}\0{identifier}".encode("ascii")).hexdigest()
+def _safe_id(value: Any) -> str | None:
+    return value if isinstance(value, str) and ID_RE.fullmatch(value) else None
 
 
-def _registry_identity_hash(platform: str, identifier: str) -> str:
-    """Normalize integration-owned registry identifiers before hashing."""
-    if platform == "localtuya" and identifier.startswith("local_"):
-        identifier = identifier.removeprefix("local_")
-    return _identity_hash(platform, identifier)
+def _physical_hash(device_id: str | None, entity_id: str) -> str:
+    seed = f"device\0{device_id}" if device_id is not None else f"entity\0{entity_id}"
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
-def _normalized_tuya_identifier(platform: Any, identifier: Any) -> str | None:
-    """Return one provider-independent Tuya identity without persisting it."""
+def _component(entity_id: str, friendly_name: str | None, attributes: Mapping[str, Any]) -> str:
+    device_class = attributes.get("device_class")
+    if isinstance(device_class, str) and PLATFORM_RE.fullmatch(device_class):
+        return device_class
+    text = " ".join((entity_id.split(".", 1)[1], friendly_name or "")).casefold()
     if (
-        platform not in TUYA_REGISTRY_PLATFORMS
-        or not isinstance(identifier, str)
+        ("main_brush" in text or "main brush" in text or "основн" in text)
+        and ("brush" in text or "щетк" in text or "щётк" in text)
     ):
-        return None
-    normalized = (
-        identifier.removeprefix("local_")
-        if platform == "localtuya" and identifier.startswith("local_")
-        else identifier
+        return "main_brush"
+    if (
+        ("side_brush" in text or "side brush" in text or "боков" in text)
+        and ("brush" in text or "щетк" in text or "щётк" in text)
+    ):
+        return "side_brush"
+    concepts = (
+        ("filter", ("filter", "фильтр")),
+        ("battery", ("battery", "батар", "заряд")),
+        ("humidity", ("humidity", "влажност")),
+        ("temperature", ("temperature", "температур")),
+        ("presence", ("presence", "occupancy", "motion", "присутств", "движен")),
+        ("child_lock", ("child_lock", "child lock", "блокиров")),
+        ("night_mode", ("night", "ночн")),
+        ("remaining_time", ("remaining", "остал")),
+        ("power", ("power", "питани")),
     )
-    return normalized if TUYA_ID_RE.fullmatch(normalized) else None
+    for concept, markers in concepts:
+        if any(marker in text for marker in markers):
+            return concept
+    return "main" if entity_id.split(".", 1)[0] in {
+        "light", "switch", "vacuum", "humidifier", "media_player", "camera"
+    } else "state"
 
 
-def _physical_device_hash(device_id: str, identifiers: Any) -> str:
-    """Collapse duplicate HA registry devices that prove one Tuya identity."""
-    if not DEVICE_ID_RE.fullmatch(device_id):
-        raise InventoryError("device identity is invalid")
-    tuya_hashes: set[str] = set()
-    if isinstance(identifiers, list):
-        for pair in identifiers:
-            if not isinstance(pair, list) or len(pair) != 2:
-                continue
-            normalized = _normalized_tuya_identifier(pair[0], pair[1])
-            if normalized is not None:
-                tuya_hashes.add(
-                    hashlib.sha256(
-                        f"tuya-device\0{normalized}".encode("ascii")
-                    ).hexdigest()
-                )
-    if len(tuya_hashes) == 1:
-        return next(iter(tuya_hashes))
-    return hashlib.sha256(f"ha-device\0{device_id}".encode("ascii")).hexdigest()
-
-
-def _xiaomi_identity(identifier: Any) -> tuple[str, str] | None:
-    """Reduce a Xiaomi registry identifier to a hash and normalized MAC."""
-    if not isinstance(identifier, str):
-        return None
-    match = XIAOMI_IDENTIFIER_RE.fullmatch(identifier)
-    if match is None:
-        return None
-    return (
-        hashlib.sha256(f"xiaomi_miot\0{identifier}".encode("ascii")).hexdigest(),
-        match.group(1).upper(),
-    )
-
-
-def _read_config_entry_diagnostics(
-    config: ha_read.AdapterConfig,
-    entry_id: str,
-    *,
-    connection_factory: Callable[[ha_read.AdapterConfig], http.client.HTTPConnection] = ha_read._default_connection,
-) -> Any:
-    valid_entry_id = _valid_entry_id(entry_id)
-    if valid_entry_id is None:
-        raise InventoryError("diagnostics entry is invalid")
-    connection: http.client.HTTPConnection | None = None
-    try:
-        connection = connection_factory(config)
-        connection.request(
-            "GET",
-            f"/api/diagnostics/config_entry/{valid_entry_id}",
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {config.token}",
-                "Connection": "close",
-            },
-        )
-        response = connection.getresponse()
-        raw = response.read(MAX_DIAGNOSTICS_BYTES + 1)
-        if response.status != 200 or len(raw) > MAX_DIAGNOSTICS_BYTES:
-            raise InventoryError("Home Assistant diagnostics failed")
-        document = ha_read.strict_json_loads(raw)
-        if not isinstance(document, dict):
-            raise InventoryError("Home Assistant diagnostics is invalid")
-        return document
-    except InventoryError:
-        raise
-    except (OSError, socket.timeout, TimeoutError, http.client.HTTPException, ha_read.AdapterError) as error:
-        raise InventoryError("Home Assistant diagnostics failed") from error
-    finally:
-        if connection is not None:
-            try:
-                connection.close()
-            except (OSError, http.client.HTTPException):
-                pass
-
-
-def _read_core_config(
-    config: ha_read.AdapterConfig,
-    *,
-    connection_factory: Callable[[ha_read.AdapterConfig], http.client.HTTPConnection] = ha_read._default_connection,
-) -> Any:
-    """Read only the exact HA config endpoint for the private version preflight."""
-    connection: http.client.HTTPConnection | None = None
-    try:
-        connection = connection_factory(config)
-        connection.request(
-            "GET",
-            "/api/config",
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {config.token}",
-                "Connection": "close",
-            },
-        )
-        response = connection.getresponse()
-        raw = response.read(MAX_DIAGNOSTICS_BYTES + 1)
-        if response.status != 200 or len(raw) > MAX_DIAGNOSTICS_BYTES:
-            raise InventoryError("Home Assistant core config failed")
-        document = ha_read.strict_json_loads(raw)
-        if not isinstance(document, dict):
-            raise InventoryError("Home Assistant core config is invalid")
-        return document
-    except InventoryError:
-        raise
-    except (OSError, socket.timeout, TimeoutError, http.client.HTTPException, ha_read.AdapterError) as error:
-        raise InventoryError("Home Assistant core config failed") from error
-    finally:
-        if connection is not None:
-            try:
-                connection.close()
-            except (OSError, http.client.HTTPException):
-                pass
-
-
-def _probe_official_mcp(
-    config: ha_read.AdapterConfig,
-    *,
-    connection_factory: Callable[[ha_read.AdapterConfig], http.client.HTTPConnection] = ha_read._default_connection,
-) -> str:
-    """Probe only endpoint existence; never send a model request or retain a body."""
-    connection: http.client.HTTPConnection | None = None
-    try:
-        connection = connection_factory(config)
-        connection.request(
-            "GET",
-            "/api/mcp",
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {config.token}",
-                "Connection": "close",
-            },
-        )
-        response = connection.getresponse()
-        response.read(1_025)
-        if response.status == 404:
-            return "unavailable"
-        if response.status in {200, 400, 405, 406, 415}:
-            return "available"
-        return "not_verified"
-    except (OSError, socket.timeout, TimeoutError, http.client.HTTPException):
-        return "not_verified"
-    finally:
-        if connection is not None:
-            try:
-                connection.close()
-            except (OSError, http.client.HTTPException):
-                pass
-
-
-def _official_ha_capabilities(
-    core_config: Any,
-    entries: dict[str, dict[str, object]],
-    area_profiles: dict[str, dict[str, object]],
-    entities: list[dict[str, object]],
-    mcp_status: str,
-) -> dict[str, object]:
-    domains = {str(item.get("domain")) for item in entries.values()}
-    alias_count = sum(
-        len(item.get("entity_aliases", []))
-        for item in entities
-        if isinstance(item.get("entity_aliases"), list)
-    )
-    area_alias_count = sum(
-        len(item.get("aliases", []))
-        for item in area_profiles.values()
-        if isinstance(item.get("aliases"), list)
-    )
-    version = core_config.get("version") if isinstance(core_config, dict) else None
-    assist_detected = "assist_pipeline" in domains or "conversation" in domains
-    return {
-        "core_version": version if _version_tuple(version) is not None else None,
-        "api_mcp": mcp_status,
-        "assist_pipeline": "present" if "assist_pipeline" in domains else "not_detected",
-        "conversation_integration": "present" if "conversation" in domains else "not_detected",
-        "assist_llm_api": "integration_detected" if assist_detected else "not_verified",
-        "get_live_context": "not_verified",
-        "area_alias_count": area_alias_count,
-        "entity_alias_count": alias_count,
-        "alias_matching": (
-            "registry_aliases_available"
-            if area_alias_count or alias_count
-            else "registry_available_no_aliases_observed"
-        ),
-        "exposed_entity_policy": "not_imported",
-        "inventory_role": "stable_identity_source_of_truth",
-    }
-
-
-def _localtuya_diagnostic_hosts(document: Any) -> dict[str, str]:
-    data = document.get("data") if isinstance(document, dict) else None
-    devices = data.get("devices") if isinstance(data, dict) else None
-    if not isinstance(devices, dict) or len(devices) > 1_024:
+def _semantic_attributes(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
         return {}
-    result: dict[str, str] = {}
-    for raw_identifier, details in devices.items():
-        if not isinstance(raw_identifier, str) or not TUYA_ID_RE.fullmatch(raw_identifier):
-            continue
-        host = details.get("host") if isinstance(details, dict) else None
-        if not isinstance(host, str):
-            continue
-        try:
-            address = ipaddress.ip_address(host)
-        except ValueError:
-            continue
-        if address not in LOCAL_NETWORK:
-            continue
-        result[_identity_hash("localtuya", raw_identifier)] = str(address)
+    candidate = {key: raw.get(key) for key in SAFE_ATTRIBUTE_KEYS if key in raw}
+    sanitized = attribute_sanitizer.sanitize_attributes(candidate)
+    result: dict[str, Any] = {}
+    for key, value in sanitized.items():
+        text = attribute_sanitizer.untrusted_text(value)
+        if text is not None:
+            result[key] = text
+        elif isinstance(value, list):
+            options = [
+                item for item in (
+                    attribute_sanitizer.untrusted_text(candidate) for candidate in value
+                ) if item is not None
+            ]
+            result[key] = options[:128]
     return result
 
 
-def _previous_mac_by_identity(bindings: Any) -> dict[str, str]:
-    if not isinstance(bindings, list):
-        return {}
-    result: dict[str, str] = {}
-    for item in bindings:
+def _raw_state_index(raw: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(raw, list) or len(raw) > ha_read.MAX_LISTED_ENTITIES:
+        raise InventoryError("Home Assistant state catalogue is invalid")
+    result: dict[str, dict[str, Any]] = {}
+    for item in raw:
         if not isinstance(item, dict):
+            raise InventoryError("Home Assistant state catalogue is invalid")
+        try:
+            entity_id = ha_read._validate_entity_id(item.get("entity_id"))
+        except ha_read.AdapterError:
             continue
-        identity_hash = item.get("identity_hash")
-        mac = item.get("mac")
-        if (
-            isinstance(identity_hash, str)
-            and re.fullmatch(r"[a-f0-9]{64}", identity_hash)
-            and isinstance(mac, str)
-            and MAC_RE.fullmatch(mac)
-        ):
-            result[identity_hash] = mac
+        result[entity_id] = item
     return result
-
-
-def _build_identity_bindings(
-    diagnostic_hosts: dict[str, tuple[str, str]],
-    identity_devices: dict[str, str],
-    network: list[dict[str, str]],
-    previous_bindings: Any,
-) -> list[dict[str, object]]:
-    network_by_ip = {item["ip"]: item for item in network}
-    network_by_mac = {item["mac"]: item for item in network}
-    previous_macs = _previous_mac_by_identity(previous_bindings)
-    previous_by_identity = {
-        str(item["identity_hash"]): item
-        for item in previous_bindings
-        if isinstance(previous_bindings, list)
-        and isinstance(item, dict)
-        and isinstance(item.get("identity_hash"), str)
-    } if isinstance(previous_bindings, list) else {}
-    bindings: list[dict[str, object]] = []
-    for identity_hash, (entry_id, configured_ip) in sorted(diagnostic_hosts.items()):
-        device_id = identity_devices.get(identity_hash)
-        if device_id is None:
-            continue
-        configured_network_device = network_by_ip.get(configured_ip)
-        mac = (
-            configured_network_device.get("mac")
-            if configured_network_device is not None
-            else previous_macs.get(identity_hash)
-        )
-        observed_ip = (
-            network_by_mac[mac]["ip"]
-            if isinstance(mac, str) and mac in network_by_mac
-            else None
-        )
-        status = (
-            "stable" if observed_ip == configured_ip
-            else "ip_changed" if observed_ip is not None
-            else "not_observed"
-        )
-        previous = previous_by_identity.get(identity_hash, {})
-        previous_misses = previous.get("network_miss_count", 0)
-        if not isinstance(previous_misses, int) or isinstance(previous_misses, bool):
-            previous_misses = 0
-        network_miss_count = (
-            0 if observed_ip is not None else min(1000, previous_misses + 1)
-        )
-        bindings.append(
-            {
-                "identity_hash": identity_hash,
-                "platform": "localtuya",
-                "device_id": device_id,
-                "config_entry_id": entry_id,
-                "configured_ip": configured_ip,
-                "observed_ip": observed_ip,
-                "mac": mac,
-                "status": status,
-                "network_miss_count": network_miss_count,
-            }
-        )
-    return bindings
-
-
-def _build_xiaomi_bindings(
-    identities: dict[str, dict[str, str]],
-    entities: list[dict[str, object]],
-    network: list[dict[str, str]],
-    previous_bindings: Any,
-) -> list[dict[str, object]]:
-    """Track Xiaomi DHCP drift by registry MAC without exposing identifiers."""
-    network_by_mac = {item["mac"]: item for item in network}
-    available_devices = {
-        str(item["device_id"])
-        for item in entities
-        if (
-            item.get("platform") == "xiaomi_miot"
-            and isinstance(item.get("device_id"), str)
-            and item.get("state_kind")
-            not in {"unavailable", "redacted", "absent"}
-        )
-    }
-    prior_by_identity = {
-        str(item["identity_hash"]): item
-        for item in previous_bindings
-        if (
-            isinstance(previous_bindings, list)
-            and isinstance(item, dict)
-            and item.get("platform") == "xiaomi_miot"
-            and isinstance(item.get("identity_hash"), str)
-        )
-    } if isinstance(previous_bindings, list) else {}
-    result: list[dict[str, object]] = []
-    for identity_hash, details in sorted(identities.items()):
-        mac = details["mac"]
-        observed = network_by_mac.get(mac)
-        observed_ip = observed.get("ip") if observed is not None else None
-        prior = prior_by_identity.get(identity_hash)
-        configured_ip = prior.get("configured_ip") if isinstance(prior, dict) else None
-        if isinstance(configured_ip, str):
-            try:
-                configured_address = ipaddress.ip_address(configured_ip)
-            except ValueError:
-                configured_ip = None
-            else:
-                if configured_address not in LOCAL_NETWORK:
-                    configured_ip = None
-        if configured_ip is None:
-            if observed_ip is None:
-                continue
-            configured_ip = observed_ip
-        if observed_ip is None:
-            status = "not_observed"
-        elif observed_ip == configured_ip:
-            status = "stable"
-        elif details["device_id"] in available_devices:
-            configured_ip = observed_ip
-            status = "stable"
-        else:
-            status = "ip_changed"
-        previous_misses = (
-            prior.get("network_miss_count", 0) if isinstance(prior, dict) else 0
-        )
-        if not isinstance(previous_misses, int) or isinstance(previous_misses, bool):
-            previous_misses = 0
-        network_miss_count = (
-            0 if observed_ip is not None else min(1000, previous_misses + 1)
-        )
-        result.append({
-            "identity_hash": identity_hash,
-            "platform": "xiaomi_miot",
-            "device_id": details["device_id"],
-            "config_entry_id": details["config_entry_id"],
-            "configured_ip": configured_ip,
-            "observed_ip": observed_ip,
-            "mac": mac,
-            "status": status,
-            "network_miss_count": network_miss_count,
-        })
-    return result
-
-
-def _complete_identity_devices(
-    diagnostic_hosts: dict[str, tuple[str, str]],
-    identity_devices: dict[str, str],
-    entities: list[dict[str, object]],
-) -> dict[str, str]:
-    """Complete LocalTuya identity links only for unambiguous config entries."""
-    completed = dict(identity_devices)
-    devices_by_entry: dict[str, set[str]] = {}
-    for entity in entities:
-        if entity.get("platform") != "localtuya":
-            continue
-        device_id = entity.get("device_id")
-        entry_ids = entity.get("config_entry_ids")
-        if not isinstance(device_id, str) or not isinstance(entry_ids, list):
-            continue
-        for entry_id in entry_ids:
-            if isinstance(entry_id, str):
-                devices_by_entry.setdefault(entry_id, set()).add(device_id)
-
-    identities_by_entry: dict[str, set[str]] = {}
-    for identity_hash, (entry_id, _host) in diagnostic_hosts.items():
-        identities_by_entry.setdefault(entry_id, set()).add(identity_hash)
-
-    for entry_id, identities in identities_by_entry.items():
-        devices = devices_by_entry.get(entry_id, set())
-        if len(identities) != 1 or len(devices) != 1:
-            continue
-        completed.setdefault(next(iter(identities)), next(iter(devices)))
-    return completed
 
 
 def collect_inventory(
     config: ha_read.AdapterConfig,
     *,
-    connector: Callable[[ha_read.AdapterConfig], Any] = incident_monitor._connect,
+    connector: Callable[[ha_read.AdapterConfig], Any] = _connect,
     snapshot_reader: Callable[[str], tuple[dict[str, Any], int]] = ha_read.execute_safely,
     raw_state_reader: Callable[[ha_read.AdapterConfig, str], Any] = ha_read.request_json,
-    diagnostics_reader: Callable[[ha_read.AdapterConfig, str], Any] = _read_config_entry_diagnostics,
-    core_config_reader: Callable[[ha_read.AdapterConfig], Any] = _read_core_config,
-    official_mcp_probe: Callable[[ha_read.AdapterConfig], str] = _probe_official_mcp,
-    previous_bindings: Any = None,
-    previous_device_network_bindings: Any = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
+    """Read registries and current states; never subscribe or call a service."""
+
     socket = connector(config)
     try:
-        incident_monitor.authenticate(socket, config.token)
-        display = _command(socket, 10, "config/entity_registry/list_for_display")
-        devices = _command(socket, 11, "config/device_registry/list")
-        config_entries = _command(socket, 12, "config_entries/get")
-        backup_info = _command(socket, 13, "backup/info")
-        areas = _command(socket, 14, "config/area_registry/list")
-        registry_entities = _command(socket, 15, "config/entity_registry/list")
+        _authenticate(socket, config.token)
+        registry_entities = _command(socket, 10, "config/entity_registry/list")
+        registry_devices = _command(socket, 11, "config/device_registry/list")
+        registry_areas = _command(socket, 12, "config/area_registry/list")
     finally:
         try:
             socket.close()
         except Exception:
             pass
-    display_entities = display.get("entities") if isinstance(display, dict) else None
     if (
-        not isinstance(display_entities, list)
-        or not isinstance(devices, list)
-        or not isinstance(config_entries, list)
-        or not isinstance(areas, list)
-        or not isinstance(registry_entities, list)
+        not isinstance(registry_entities, list)
+        or not isinstance(registry_devices, list)
+        or not isinstance(registry_areas, list)
+        or len(registry_entities) > 4096
+        or len(registry_devices) > 4096
+        or len(registry_areas) > 1024
     ):
-        raise InventoryError("Home Assistant inventory response is invalid")
+        raise InventoryError("Home Assistant registry response is invalid")
     snapshot, exit_code = snapshot_reader("snapshot")
     snapshot_entities = snapshot.get("entities") if isinstance(snapshot, dict) else None
     if exit_code != 0 or not isinstance(snapshot_entities, list):
         raise InventoryError("Home Assistant inventory snapshot failed")
-    snapshot_index = {
-        item.get("entity_id"): item
-        for item in snapshot_entities
+    sanitized_states = {
+        item["entity_id"]: item for item in snapshot_entities
         if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
     }
+    raw_states = _raw_state_index(raw_state_reader(config, "/api/states"))
 
-    entries: dict[str, dict[str, object]] = {}
-    for item in config_entries:
+    areas_by_id: dict[str, dict[str, Any]] = {}
+    for item in registry_areas:
         if not isinstance(item, dict):
-            raise InventoryError("Home Assistant config entry is invalid")
-        entry_id = _valid_entry_id(item.get("entry_id"))
-        domain = item.get("domain")
-        if entry_id is None or not isinstance(domain, str) or not PLATFORM_RE.fullmatch(domain):
             continue
-        state = item.get("state") if item.get("state") in {
-            "loaded", "setup_error", "setup_retry", "not_loaded", "failed_unload",
-            "migration_error", "setup_in_progress",
-        } else "other"
-        entries[entry_id] = {
-            "entry_id": entry_id,
-            "domain": domain,
-            "state": state,
-            "supports_reconfigure": item.get("supports_reconfigure") is True,
-            "supports_options": item.get("supports_options") is True,
-            "supports_unload": item.get("supports_unload") is True,
+        area_id = _safe_id(item.get("area_id") or item.get("id"))
+        name = _safe_name(item.get("name"))
+        if area_id is None or name is None:
+            continue
+        areas_by_id[area_id] = {
+            "area_id": area_id, "name": name, "aliases": _safe_names(item.get("aliases")),
         }
 
-    area_profiles: dict[str, dict[str, object]] = {}
-    for item in areas:
+    devices_by_id: dict[str, dict[str, Any]] = {}
+    for item in registry_devices:
         if not isinstance(item, dict):
-            raise InventoryError("Home Assistant area registry is invalid")
-        area_id = item.get("area_id") or item.get("id")
-        name = _safe_registry_text(item.get("name"), maximum=100)
-        if isinstance(area_id, str) and 1 <= len(area_id) <= 128 and name is not None:
-            area_profiles[area_id] = {
-                "name": name,
-                "aliases": _safe_aliases(item.get("aliases")),
-            }
+            continue
+        device_id = _safe_id(item.get("id"))
+        if device_id is not None:
+            devices_by_id[device_id] = item
 
-    entity_registry_index: dict[str, dict[str, Any]] = {}
+    entities: list[dict[str, Any]] = []
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for item in registry_entities:
         if not isinstance(item, dict):
-            raise InventoryError("Home Assistant entity registry is invalid")
+            continue
         try:
             entity_id = ha_read._validate_entity_id(item.get("entity_id"))
         except ha_read.AdapterError:
             continue
-        entity_registry_index[entity_id] = item
-
-    device_entries: dict[str, list[str]] = {}
-    device_physical_hashes: dict[str, str] = {}
-    device_metadata: dict[str, dict[str, object]] = {}
-    device_macs: dict[str, set[str]] = {}
-    identity_devices: dict[str, str] = {}
-    xiaomi_identities: dict[str, dict[str, str]] = {}
-    for item in devices:
-        if not isinstance(item, dict):
-            raise InventoryError("Home Assistant device registry is invalid")
-        device_id = item.get("id")
-        if not isinstance(device_id, str) or not DEVICE_ID_RE.fullmatch(device_id):
+        state = sanitized_states.get(entity_id)
+        if state is None:
             continue
-        linked_set: set[str] = set()
-        raw_links = item.get("config_entries")
-        if isinstance(raw_links, list):
-            for raw_entry_id in raw_links:
-                entry_id = _valid_entry_id(raw_entry_id)
-                if entry_id is not None and entry_id in entries:
-                    linked_set.add(entry_id)
-        linked = sorted(linked_set)
-        device_entries[device_id] = linked
-        raw_identifiers = item.get("identifiers")
-        device_physical_hashes[device_id] = _physical_device_hash(
-            device_id, raw_identifiers
+        device_id = _safe_id(item.get("device_id"))
+        # Registry entities without a device are helpers, automations or
+        # integration services. They are not physical-device identities.
+        if device_id is None:
+            continue
+        device = devices_by_id.get(device_id or "", {})
+        raw_state = raw_states.get(entity_id, {})
+        raw_attributes = raw_state.get("attributes")
+        raw_attributes = raw_attributes if isinstance(raw_attributes, dict) else {}
+        friendly_name = (
+            _safe_name(raw_attributes.get("friendly_name"))
+            or _safe_name(item.get("name"))
+            or _safe_name(item.get("original_name"))
+            or entity_id.split(".", 1)[1].replace("_", " ")[:100]
         )
-        device_macs[device_id] = _device_registry_macs(item.get("connections"))
-        area = area_profiles.get(str(item.get("area_id")), {})
+        area_id = _safe_id(item.get("area_id")) or _safe_id(device.get("area_id"))
+        area = areas_by_id.get(area_id or "")
+        platform = item.get("platform")
+        domain = entity_id.split(".", 1)[0]
+        physical_hash = _physical_hash(device_id, entity_id)
+        semantic = _semantic_attributes(raw_attributes)
+        entity = {
+            "entity_id": entity_id,
+            "domain": domain,
+            "friendly_name": friendly_name,
+            "original_name": _safe_name(item.get("original_name")),
+            "entity_aliases": _safe_names(item.get("aliases")),
+            "area_name": area.get("name") if area else None,
+            "area_aliases": area.get("aliases", []) if area else [],
+            "platform": platform if isinstance(platform, str) and PLATFORM_RE.fullmatch(platform) else None,
+            "physical_device_hash": physical_hash,
+            "component": _component(entity_id, friendly_name, raw_attributes),
+            "semantic_role": "measurement" if state.get("state_kind") == "number" else "state",
+            "capability": "observe",
+            "semantic_attributes": semantic,
+            "state_kind": state.get("state_kind"),
+            "state_value": state.get("state_value"),
+            "source_last_updated_at": state.get("source_last_updated_at"),
+        }
+        entities.append(entity)
+        grouped.setdefault(physical_hash, []).append(entity)
+
+    physical_devices: list[dict[str, Any]] = []
+    for physical_hash, members in grouped.items():
+        first_entity_id = str(members[0]["entity_id"])
+        registry_item = next(
+            (
+                device for device_id, device in devices_by_id.items()
+                if _physical_hash(device_id, first_entity_id) == physical_hash
+            ),
+            {},
+        )
         display_name = (
-            _safe_registry_text(item.get("name_by_user"), maximum=100)
-            or _safe_registry_text(item.get("name"), maximum=100)
-        )
-        device_metadata[device_id] = {
-            "display_name": display_name,
-            "manufacturer": _safe_registry_text(item.get("manufacturer")),
-            "model": _safe_registry_text(item.get("model")),
-            "software_version": _safe_registry_text(item.get("sw_version")),
-            "area_name": area.get("name"),
-            "area_aliases": list(area.get("aliases", [])),
-        }
-        if isinstance(raw_identifiers, list):
-            xiaomi_matches: list[tuple[str, str]] = []
-            for pair in raw_identifiers:
-                if not isinstance(pair, list) or len(pair) != 2:
-                    continue
-                platform, identifier = pair
-                if (
-                    platform in {"localtuya", "tuya_local"}
-                    and isinstance(identifier, str)
-                    and TUYA_ID_RE.fullmatch(identifier)
-                ):
-                    identity_devices[_registry_identity_hash(platform, identifier)] = device_id
-                if platform == "xiaomi_miot":
-                    xiaomi_identity = _xiaomi_identity(identifier)
-                    if xiaomi_identity is not None:
-                        xiaomi_matches.append(xiaomi_identity)
-            xiaomi_entries = [
-                entry_id for entry_id in linked
-                if entries[entry_id].get("domain") == "xiaomi_miot"
-            ]
-            if len(xiaomi_entries) == 1 and len(xiaomi_matches) == 1:
-                identity_hash, mac = xiaomi_matches[0]
-                if identity_hash in xiaomi_identities:
-                    raise InventoryError("Xiaomi registry identity is ambiguous")
-                xiaomi_identities[identity_hash] = {
-                    "device_id": device_id,
-                    "config_entry_id": xiaomi_entries[0],
-                    "mac": mac,
-                }
-
-    entities: list[dict[str, object]] = []
-    for item in display_entities:
-        if not isinstance(item, dict):
-            raise InventoryError("Home Assistant entity registry is invalid")
-        entity_id = item.get("ei")
-        platform = item.get("pl")
-        device_id = item.get("di")
-        try:
-            normalized_id = ha_read._validate_entity_id(entity_id)
-        except ha_read.AdapterError:
-            continue
-        if not isinstance(platform, str) or not PLATFORM_RE.fullmatch(platform):
-            continue
-        valid_device_id = device_id if isinstance(device_id, str) and DEVICE_ID_RE.fullmatch(device_id) else None
-        snapshot_item = snapshot_index.get(normalized_id, {})
-        registry = entity_registry_index.get(normalized_id, {})
-        registry_area = area_profiles.get(str(registry.get("area_id")), {})
-        inherited_area = device_metadata.get(valid_device_id, {}) if valid_device_id else {}
-        linked_entries = device_entries.get(valid_device_id, []) if valid_device_id else []
-        integration_domains = sorted({
-            str(entries[entry_id]["domain"])
-            for entry_id in linked_entries
-            if entry_id in entries
-        }) or [platform]
-        state_kind = snapshot_item.get("state_kind", "absent")
-        entities.append(
-            {
-                "entity_id": normalized_id,
-                "domain": normalized_id.split(".", 1)[0],
-                "platform": platform,
-                "integration_domains": integration_domains,
-                "device_id": valid_device_id,
-                "physical_device_hash": (
-                    device_physical_hashes.get(valid_device_id)
-                    if valid_device_id
-                    else None
-                ),
-                "config_entry_ids": linked_entries,
-                "entity_aliases": _safe_aliases(registry.get("aliases")),
-                "original_name": _safe_registry_text(registry.get("original_name")),
-                "translation_key": _safe_registry_text(registry.get("translation_key")),
-                "area_name": registry_area.get("name") or inherited_area.get("area_name"),
-                "area_aliases": list(
-                    registry_area.get("aliases")
-                    or inherited_area.get("area_aliases", [])
-                ),
-                "physical_device_name": inherited_area.get("display_name"),
-                "manufacturer": inherited_area.get("manufacturer"),
-                "model": inherited_area.get("model"),
-                "software_version": inherited_area.get("software_version"),
-                "state_kind": state_kind,
-                "state_value": snapshot_item.get("state_value"),
-                "availability": _availability(state_kind),
-                "source_last_updated_at": snapshot_item.get(
-                    "source_last_updated_at"
-                ),
-                "semantic_role": "state",
-                "capability": "observe",
-                "diagnostic_relevance": False,
-                "safety_class": _device_safety_class(
-                    [normalized_id], {platform}
-                ),
-            }
-        )
-
-    raw_states = raw_state_reader(config, "/api/states")
-    raw_state_index = {
-        item.get("entity_id"): item
-        for item in raw_states
-        if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
-    } if isinstance(raw_states, list) else {}
-    for entity in entities:
-        raw = raw_state_index.get(entity["entity_id"], {})
-        attributes = raw.get("attributes") if isinstance(raw, dict) else None
-        if not isinstance(attributes, dict):
-            attributes = {}
-        friendly_name = ha_read.sanitize_friendly_name(
-            attributes.get("friendly_name")
-        )
-        entity["friendly_name"] = _safe_registry_text(
-            friendly_name, maximum=100
-        )
-        selected_attributes = {
-            key: attributes[key]
-            for key in SAFE_SEMANTIC_ATTRIBUTES
-            if key in attributes
-        }
-        try:
-            safe_attributes = attribute_sanitizer.sanitize_attributes(
-                selected_attributes,
-                allowed_names=SAFE_SEMANTIC_ATTRIBUTES,
+            _safe_name(registry_item.get("name_by_user"))
+            or _safe_name(registry_item.get("name"))
+            or _safe_name(registry_item.get("original_name"))
+            or min(
+                (str(item["friendly_name"]) for item in members),
+                key=lambda value: (len(value), value.casefold()),
             )
-        except attribute_sanitizer.AttributeSanitizerError:
-            safe_attributes = {}
-        entity["semantic_attributes"] = safe_attributes
-        entity["semantic_role"] = _semantic_role(
-            str(entity["entity_id"]), safe_attributes
         )
-        entity["capability"] = _entity_capability(
-            str(entity["entity_id"]), safe_attributes
-        )
-        entity["diagnostic_relevance"] = entity["semantic_role"] in {
-            "diagnostic", "connectivity", "maintenance"
-        }
-        component = (
-            entity.get("translation_key")
-            or entity.get("original_name")
-            or entity.get("friendly_name")
-            or str(entity["entity_id"]).split(".", 1)[1].replace("_", " ")
-        )
-        entity["component"] = component
-    network = _network_devices(raw_states)
-    device_network_bindings = _build_device_network_bindings(
-        device_macs,
-        device_physical_hashes,
-        device_entries,
-        network,
-        previous_device_network_bindings,
-    )
-    core_config = core_config_reader(config)
-    official_mcp_status = official_mcp_probe(config)
-    if official_mcp_status not in {"available", "unavailable", "not_verified"}:
-        raise InventoryError("official Home Assistant capability probe is invalid")
-    integration_capabilities = _integration_capabilities(raw_states, core_config)
-    core_version = integration_capabilities["tuya_local"]["core_version"]
-    backup_readiness = _backup_readiness(backup_info, core_version)
-    diagnostic_hosts: dict[str, tuple[str, str]] = {}
-    for entry_id, entry in entries.items():
-        if entry.get("domain") != "localtuya":
-            continue
-        try:
-            hosts = _localtuya_diagnostic_hosts(diagnostics_reader(config, entry_id))
-        except InventoryError:
-            continue
-        for identity_hash, host in hosts.items():
-            if identity_hash in diagnostic_hosts:
-                raise InventoryError("LocalTuya diagnostic identity is ambiguous")
-            diagnostic_hosts[identity_hash] = (entry_id, host)
-    identity_devices = _complete_identity_devices(
-        diagnostic_hosts, identity_devices, entities
-    )
-    bindings = _build_identity_bindings(
-        diagnostic_hosts, identity_devices, network, previous_bindings
-    )
-    bindings.extend(
-        _build_xiaomi_bindings(
-            xiaomi_identities, entities, network, previous_bindings
-        )
-    )
-    bindings.sort(key=lambda item: (str(item["platform"]), str(item["identity_hash"])))
-    device_network_bindings = _merge_identity_network_bindings(
-        device_network_bindings,
-        bindings,
-        device_physical_hashes,
-        device_entries,
-    )
-    integration_profiles = _integration_profiles(
-        entries, {str(item["platform"]) for item in entities}
-    )
-    physical_devices = _physical_devices(
-        entities, entries, device_network_bindings, device_metadata
-    )
-    official_home_assistant = _official_ha_capabilities(
-        core_config, entries, area_profiles, entities, official_mcp_status
-    )
+        aliases: list[str] = []
+        for value in (
+            registry_item.get("name_by_user"), registry_item.get("name"),
+            registry_item.get("original_name"),
+        ):
+            safe = _safe_name(value)
+            if safe is not None and safe != display_name and safe not in aliases:
+                aliases.append(safe)
+        for member in members:
+            for value in [member.get("friendly_name"), *member.get("entity_aliases", [])]:
+                safe = _safe_name(value)
+                if safe is not None and safe != display_name and safe not in aliases:
+                    aliases.append(safe)
+        area_names = sorted({
+            str(item["area_name"]) for item in members if isinstance(item.get("area_name"), str)
+        })
+        area_aliases = sorted({
+            str(value) for item in members for value in item.get("area_aliases", [])
+            if isinstance(value, str)
+        })
+        physical_devices.append({
+            "physical_device_hash": physical_hash,
+            "display_name": display_name,
+            "name": _safe_name(registry_item.get("name")),
+            "name_by_user": _safe_name(registry_item.get("name_by_user")),
+            "original_name": _safe_name(registry_item.get("original_name")),
+            "aliases": aliases[:64],
+            "area_names": area_names,
+            "area_aliases": area_aliases,
+            "manufacturers": [value for value in [_safe_name(registry_item.get("manufacturer"))] if value],
+            "models": [value for value in [_safe_name(registry_item.get("model"))] if value],
+            "entity_ids": sorted(str(item["entity_id"]) for item in members),
+            "available_entity_count": sum(item.get("state_kind") not in {"unavailable", "redacted"} for item in members),
+            "unavailable_entity_count": sum(item.get("state_kind") == "unavailable" for item in members),
+        })
+
+    entities.sort(key=lambda item: str(item["entity_id"]))
+    physical_devices.sort(key=lambda item: (
+        str(item.get("display_name") or "").casefold(), str(item["physical_device_hash"])
+    ))
     return {
         "schema_version": INVENTORY_SCHEMA_VERSION,
-        "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "source": "Home Assistant registries and sanitized current states",
+        "observed_at": snapshot.get("observed_at"),
         "entity_count": len(entities),
-        "physical_device_count": len(set(device_physical_hashes.values())),
-        "config_entry_count": len(entries),
-        "network_device_count": len(network),
-        "identity_binding_count": len(bindings),
-        "device_network_binding_count": len(device_network_bindings),
-        "ip_changed_count": sum(item["status"] == "ip_changed" for item in bindings),
-        "integration_capabilities": integration_capabilities,
-        "integration_profiles": integration_profiles,
-        "backup_readiness": backup_readiness,
-        "official_home_assistant": official_home_assistant,
-        "areas": sorted(
-            area_profiles.values(), key=lambda item: str(item.get("name", ""))
-        ),
-        "entities": sorted(entities, key=lambda item: str(item["entity_id"])),
-        "config_entries": sorted(entries.values(), key=lambda item: str(item["entry_id"])),
-        "network_devices": network,
-        "identity_bindings": bindings,
-        "device_network_bindings": device_network_bindings,
+        "physical_device_count": len(physical_devices),
+        "areas": sorted(areas_by_id.values(), key=lambda item: str(item["name"]).casefold()),
+        "entities": entities,
         "physical_devices": physical_devices,
     }
 
 
-def migrate_inventory_document(document: object) -> dict[str, Any]:
-    """Upgrade an already-private inventory in memory without inventing facts."""
-    if not isinstance(document, dict):
-        raise InventoryError("inventory migration source is invalid")
+def migrate_inventory_document(document: dict[str, Any]) -> dict[str, Any]:
+    """Accept only graph fields and discard legacy recovery/network overlays."""
+
     version = document.get("schema_version")
-    if version == INVENTORY_SCHEMA_VERSION:
-        return document
-    if version not in {1, 2}:
+    entities = document.get("entities")
+    devices = document.get("physical_devices")
+    areas = document.get("areas", [])
+    if (
+        version not in {3, INVENTORY_SCHEMA_VERSION}
+        or not isinstance(entities, list) or len(entities) > 4096
+        or not isinstance(devices, list) or len(devices) > 4096
+        or not isinstance(areas, list) or len(areas) > 1024
+    ):
         raise InventoryError("inventory schema is unsupported")
-    migrated = dict(document)
-    raw_entries = migrated.get("config_entries", [])
-    entries = {
-        str(item.get("entry_id")): str(item.get("domain"))
-        for item in raw_entries
-        if isinstance(item, dict)
-        and isinstance(item.get("entry_id"), str)
-        and isinstance(item.get("domain"), str)
-    } if isinstance(raw_entries, list) else {}
-    raw_entities = migrated.get("entities")
-    if not isinstance(raw_entities, list):
-        raise InventoryError("inventory entities are unavailable")
-    entities: list[dict[str, Any]] = []
-    for raw in raw_entities:
-        if not isinstance(raw, dict):
-            raise InventoryError("inventory entity is invalid")
-        try:
-            entity_id = ha_read._validate_entity_id(raw.get("entity_id"))
-        except ha_read.AdapterError as error:
-            raise InventoryError("inventory entity is invalid") from error
-        item = dict(raw)
-        platform = item.get("platform")
-        if not isinstance(platform, str) or PLATFORM_RE.fullmatch(platform) is None:
-            platform = "runtime"
-        entry_ids = item.get("config_entry_ids", [])
-        entry_id_values = (
-            [value for value in entry_ids if isinstance(value, str)]
-            if isinstance(entry_ids, list)
-            else []
-        )
-        integration_domains = sorted({
-            entries[value]
-            for value in entry_id_values
-            if value in entries
-        }) or [platform]
-        state_kind = item.get("state_kind", "absent")
-        semantic_attributes = item.get("semantic_attributes")
-        if not isinstance(semantic_attributes, dict):
-            semantic_attributes = {}
-        item.update({
-            "domain": entity_id.split(".", 1)[0],
-            "integration_domains": integration_domains,
-            "entity_aliases": [],
-            "original_name": None,
-            "translation_key": None,
-            "area_name": None,
-            "area_aliases": [],
-            "physical_device_name": None,
-            "manufacturer": None,
-            "model": None,
-            "software_version": None,
-            "state_value": item.get("state_value"),
-            "availability": _availability(state_kind),
-            "semantic_attributes": semantic_attributes,
-            "semantic_role": _semantic_role(entity_id, semantic_attributes),
-            "capability": _entity_capability(entity_id, semantic_attributes),
-            "diagnostic_relevance": False,
-            "safety_class": _device_safety_class([entity_id], {platform}),
-            "component": (
-                item.get("friendly_name")
-                or entity_id.split(".", 1)[1].replace("_", " ")
-            ),
-        })
-        item["diagnostic_relevance"] = item["semantic_role"] in {
-            "diagnostic", "connectivity", "maintenance"
-        }
-        entities.append(item)
-    migrated["entities"] = entities
-    migrated["areas"] = []
-    raw_devices = migrated.get("physical_devices", [])
-    if isinstance(raw_devices, list):
-        devices: list[dict[str, Any]] = []
-        for raw in raw_devices:
-            if not isinstance(raw, dict):
-                continue
-            item = dict(raw)
-            item.setdefault("area_names", [])
-            item.setdefault("area_aliases", [])
-            item.setdefault("manufacturers", [])
-            item.setdefault("models", [])
-            item.setdefault("software_versions", [])
-            item.setdefault("semantic_roles", [])
-            item.setdefault("capabilities", [])
-            devices.append(item)
-        migrated["physical_devices"] = devices
-    migrated["schema_version"] = INVENTORY_SCHEMA_VERSION
-    migrated["migrated_from_schema"] = version
+    for item in devices:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("physical_device_hash"), str)
+            or PHYSICAL_HASH_RE.fullmatch(item["physical_device_hash"]) is None
+        ):
+            raise InventoryError("inventory schema is invalid")
+    migrated = {
+        "schema_version": INVENTORY_SCHEMA_VERSION,
+        "source": document.get("source", "Home Assistant inventory"),
+        "observed_at": document.get("observed_at"),
+        "entity_count": len(entities),
+        "physical_device_count": len(devices),
+        "areas": areas,
+        "entities": entities,
+        "physical_devices": devices,
+    }
+    if version != INVENTORY_SCHEMA_VERSION:
+        migrated["migrated_from_schema"] = version
     return migrated
 
 
-def _load_previous_section(
-    path: Path, section: str
-) -> list[dict[str, object]]:
+def _validate_directory(path: Path) -> None:
     try:
         metadata = path.lstat()
-    except FileNotFoundError:
-        return []
+    except OSError as error:
+        raise InventoryError("inventory directory is unavailable") from error
     if (
-        not stat.S_ISREG(metadata.st_mode)
+        not stat.S_ISDIR(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
         or metadata.st_mode & 0o077
-        or metadata.st_size <= 0
-        or metadata.st_size > MAX_INVENTORY_BYTES
     ):
-        raise InventoryError("previous inventory is unsafe")
-    try:
-        document = ha_read.strict_json_loads(path.read_bytes())
-    except (OSError, ha_read.AdapterError) as error:
-        raise InventoryError("previous inventory is invalid") from error
-    bindings = document.get(section) if isinstance(document, dict) else None
-    return bindings if isinstance(bindings, list) else []
-
-
-def _load_previous_bindings(path: Path) -> list[dict[str, object]]:
-    return _load_previous_section(path, "identity_bindings")
-
-
-def _load_previous_device_network_bindings(
-    path: Path,
-) -> list[dict[str, object]]:
-    return _load_previous_section(path, "device_network_bindings")
+        raise InventoryError("inventory directory is unsafe")
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
-    incident_monitor._validate_directory(path.parent)
+    _validate_directory(path.parent)
     try:
         existing = path.lstat()
     except FileNotFoundError:
@@ -1667,6 +452,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
     if existing is not None and (
         not stat.S_ISREG(existing.st_mode)
         or existing.st_uid != os.geteuid()
+        or existing.st_nlink != 1
         or existing.st_mode & 0o077
     ):
         raise InventoryError("inventory target is unsafe")
@@ -1695,66 +481,22 @@ def _atomic_write(path: Path, payload: bytes) -> None:
 
 def main() -> int:
     try:
-        state_dir = incident_monitor._state_dir()
-        target = state_dir / INVENTORY_NAME
-        inventory = collect_inventory(
-            ha_read.load_config(),
-            previous_bindings=_load_previous_bindings(target),
-            previous_device_network_bindings=(
-                _load_previous_device_network_bindings(target)
-            ),
-        )
+        inventory = collect_inventory(ha_read.load_config())
+        target = inventory_path()
         _atomic_write(
             target,
-            json.dumps(inventory, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii") + b"\n",
-        )
-        store = incident_monitor.IncidentStore(
-            state_dir / incident_monitor.DATABASE_NAME
-        )
-        try:
-            observed_epoch = int(time.time())
-            mapped_entities = store.replace_entity_device_map(
-                inventory["entities"], observed_epoch
-            )
-            drift_journal = store.record_network_bindings(
-                inventory["identity_bindings"], observed_epoch
-            )
-            device_network_journal = store.record_device_network_bindings(
-                inventory["device_network_bindings"], observed_epoch
-            )
-        finally:
-            store.close()
-        print(
             json.dumps(
-                {
-                    "schema_version": 1,
-                    "entity_count": inventory["entity_count"],
-                    "physical_device_count": inventory["physical_device_count"],
-                    "mapped_entity_count": mapped_entities,
-                    "config_entry_count": inventory["config_entry_count"],
-                    "network_device_count": inventory["network_device_count"],
-                    "identity_binding_count": inventory["identity_binding_count"],
-                    "device_network_binding_count": inventory[
-                        "device_network_binding_count"
-                    ],
-                    "ip_changed_count": inventory["ip_changed_count"],
-                    "drift_events": drift_journal["events"],
-                    "device_network_events": device_network_journal["events"],
-                    "stored": True,
-                },
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
+                inventory, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            ).encode("ascii") + b"\n",
         )
+        print(json.dumps({
+            "schema_version": 1,
+            "entity_count": inventory["entity_count"],
+            "physical_device_count": inventory["physical_device_count"],
+            "stored": True,
+        }, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
         return 0
-    except (
-        InventoryError,
-        incident_monitor.MonitorError,
-        ha_read.AdapterError,
-        OSError,
-        sqlite3.Error,
-    ):
+    except (InventoryError, ha_read.AdapterError, OSError):
         print("HOME_ASSISTANT_INVENTORY_FAILED", file=sys.stderr)
         return 2
 

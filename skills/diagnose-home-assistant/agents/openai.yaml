@@ -1,4 +1,0 @@
-interface:
-  display_name: "Diagnose Home Assistant"
-  short_description: "Read-only Home Assistant availability checks"
-  default_prompt: "Use $diagnose-home-assistant to diagnose Home Assistant access without changing it."

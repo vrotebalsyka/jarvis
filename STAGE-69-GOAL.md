@@ -102,3 +102,19 @@ Stage 69 нельзя объявлять завершённым, пока одн
 В финале дай короткий отчёт на русском: что было сломано, что реально исправлено, какие живые сценарии прошли, latency, какие blockers остались. Не переходи к новым функциям до выполнения gates.
 
 Learned profile никогда не должен фильтровать текущие HA features. Любая новая live feature, отсутствующая в старом profile, остаётся читаемой через generic live semantics. Compact retrieval обязан переносить live areas/room. При нескольких равноправных action capabilities executor не должен отдавать их модели на выбор — только clarification без side effect. Acceptance обязательно проверить отдельными regressions для stale profile + new live feature и для вопроса «где» через compact profile. ScriptedModel не считать E2E evidence. Live control/outage/recovery не выполнять без отдельного разрешения владельца.
+
+## Live-аудит 1 сентября 2026 года
+
+Stage 69 остаётся незавершённым. В разрешённой владельцем live-приёмке команда
+«выключи свет в ванной» фактически выключила свет в кабинете, а модель сообщила
+подтверждённый успех. Тест немедленно остановлен, кабинет восстановлен точной
+командой и проверен GET-readback. Оба робота не запускались и остались на базе,
+но перехваченный dry-run доказал, что текущий capability catalog допускает
+`vacuum.start` и модель выбирает его.
+
+Полный evidence-backed отчёт:
+[`reports/STAGE-69-LIVE-AUDIT-2026-09-01.md`](reports/STAGE-69-LIVE-AUDIT-2026-09-01.md).
+
+До исправления room/area resolver, intent-to-target verification, hard-deny для
+всех vacuum actions и утечки computer-resource route production должен
+оставаться read-only. Старый результат `11/11` не перекрывает этот live-аудит.

@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import http.client
 import json
+import os
 import re
 import statistics
 import sys
@@ -18,7 +19,8 @@ import websocket
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "tests")]
+RUNTIME_DIR = Path(os.environ.get("HOME_BUTLER_TEST_RUNTIME_DIR", ROOT / "scripts"))
+sys.path[:0] = [str(RUNTIME_DIR), str(ROOT / "tests")]
 
 import bounded_ha_agent as agent  # noqa: E402
 import home_assistant_inventory as inventory_builder  # noqa: E402

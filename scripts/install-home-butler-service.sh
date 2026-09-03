@@ -109,19 +109,24 @@ if $activate; then
     fi
   done
   systemctl daemon-reload
+  for unit in "${OBSOLETE_UNITS[@]}"; do
+    systemctl reset-failed "$unit" >/dev/null 2>&1 || true
+  done
   systemctl enable "${ACTIVE_UNITS[@]}"
   systemctl restart ollama.service
   systemctl restart home-butler-inventory.service
   systemctl restart home-butler-local-chat.service \
     home-butler-alice-skill.service home-butler-alice-tunnel.service
   health_ok=false
-  for _attempt in 1 2 3; do
+  for _attempt in {1..12}; do
     if systemctl start home-butler-alice-health.service; then
       health_ok=true
       break
     fi
     systemctl reset-failed home-butler-alice-health.service
-    sleep 2
+    if (( _attempt < 12 )); then
+      sleep 3
+    fi
   done
   $health_ok || { printf '%s\n' 'Alice health check failed.' >&2; exit 1; }
 fi

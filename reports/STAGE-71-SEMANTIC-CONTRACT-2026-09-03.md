@@ -1,7 +1,7 @@
 # Stage 71 — Semantic Contract and Truthful Reads
 
-Статус: `PREDEPLOY_GREEN_AWAITING_OWNER_ACTIVATION`. Production не изменён и
-остаётся на Stage 70. Stage 72 не начат.
+Статус: `COMPLETE`. Stage 71 активирован после отдельного разрешения владельца,
+post-activation acceptance зелёный. Stage 72 не начат.
 
 ## Safety point и baseline
 
@@ -16,8 +16,8 @@
 - Фактическая загрузка: context 8192, `100% CPU`; `nvidia-smi` отсутствует,
   GPU offload не подтверждён и не заявляется.
 - Конфигурация baseline содержала конфликтующие systemd overrides 32768/64000;
-  фактический loaded request оставался 8192. Stage 71 ставит поздний
-  `zz-home-butler.conf`, но до activation он не применён.
+  фактический loaded request оставался 8192. Stage 71 установил поздний
+  `zz-home-butler.conf`; фактически загруженный context после activation — 8192.
 - Baseline latency: deterministic P50/P95/P99 0.0949/0.1863/0.2015 s (n=5);
   старый model-assisted classifier 11.0390/11.1972/11.2112 s (n=3).
 - Baseline inventory schema v4: 178 entities, 50 physical devices, 8 areas,
@@ -31,7 +31,8 @@
 caller реального dialogue path. Hermes сообщал об отсутствии messaging
 platforms, а standalone unit держал отдельный runtime и redundant MCP child.
 Удалены gateway unit, runner, каталог `hermes/` и optional MCP stdio transport.
-После activation closed systemd set будет содержать 11 units.
+После activation closed systemd set содержит 11 units; старый unit и оба
+Hermes runtime-каталога отсутствуют.
 
 ## Архитектура после
 
@@ -85,11 +86,41 @@ Frozen blind owner corpus: 40 строк, SHA-256
   P99 1.8982 s.
 - Oracle result: PASS; gates PASS before deploy.
 
+## Activation и post-activation acceptance
+
+Владелец отдельно разрешил activation и restart. Installer применил closed
+runtime и units, перезапустил только относящиеся к Stage 71 сервисы и выполнил
+read-only health probe. Первый запуск выявил слишком короткое окно ожидания
+холодной загрузки Ollama: три пробы `local_model` завершились ошибкой до её
+готовности. Окно исправлено до 12 попыток с интервалом 3 секунды; при повторной
+activation первые три пробы также застали cold start, четвёртая вернула
+`healthy`. Итоговый список failed units пуст.
+
+- Installed set: ровно 11 units; 7 постоянных services/timers/paths active.
+- Installed runtime: 14/14 файлов совпадают с checkout по SHA-256; Hermes и
+  obsolete `home-butler.service` отсутствуют.
+- Inventory: schema 5, owner `homebutler:homebutler`, mode `0600`, current
+  fields 0; 257 entities, 51 physical, 37 logical, 8 areas, 28 integrations.
+- Coverage: 215/215 enabled current entities represented; exercised 30
+  physical devices и 10 logical entities.
+- Frozen blind corpus: 40 строк, SHA-256
+  `4ff8119abb39dd0e33b17c239699f8df15f372f414aa743d256c234eab602376`.
+- `WRONG_TARGET=0`, `INVENTED_FACTS=0`, `LOST_REQUESTED_VALUES=0`, persistent
+  current values 0, model-generated entity IDs 0, `HA_SERVICE_CALLS=0`.
+- Acceptance failures: 0; skips: 4 безопасные неоднозначности.
+- Deterministic n=76: P50 0.0510 s, P95 0.1594 s, P99 0.2291 s.
+- Model-assisted n=20: P50 2.1168 s, P95 2.9852 s, P99 3.0073 s.
+- Independent oracle: PASS. Все post-activation gates: PASS.
+- Actual model remains `qwen3.5:2b-q4_K_M`, digest
+  `124a03c347777e8e4e5955c33610ae01d9d90d8c2a718bfba069c498d5c7f3c9`,
+  context 8192, `100% CPU`; GPU offload не заявляется.
+
 ## Размер и файлы
 
 - Lines before: all tracked 6,770; production Python 4,603; tests Python 557.
-- Lines after: all tracked text 7,818; production Python 4,895;
-  tests Python 1,569.
+- Lines after implementation and activation fix: all tracked text 7,825;
+  production Python 4,895; tests Python 1,571 (documentation-only finalization
+  excluded from this comparable code-size snapshot).
 - Deleted: `config/systemd/home-butler.service`, `hermes/.no-bundled-skills`,
   `hermes/config.yaml`, `scripts/run-hermes-gateway.sh`, три obsolete Stage 70
   test files и старый `tests/live_read_acceptance.py`.
@@ -98,9 +129,8 @@ Frozen blind owner corpus: 40 строк, SHA-256
 - Added verification: blind corpus, Stage 71 fixtures/corpus/oracle, unit tests и
   live acceptance.
 
-## Оставшийся обязательный шаг
+## Итог
 
-Activation не выполнялась. После отдельного явного разрешения владельца нужно
-запустить Stage 71 installer с `--activate`, проверить 11-unit closed set,
-model/offload и persistent schema v5, затем повторить live-read acceptance.
-Только после этого Stage 71 может получить статус `COMPLETE`.
+Stage 71 complete: repository, fixture, independent oracle, pre-deploy и
+post-activation live read-only gates зелёные. Production работает на Stage 71;
+управляющих HA service calls не выполнялось. Stage 72 не начат.

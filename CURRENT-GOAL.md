@@ -1,6 +1,6 @@
 # Current Goal — Stage 72
 
-Статус: `GREEN_SHADOW_NOT_DEPLOYED`.
+Статус: `FINAL_REAL_HOME_ACCEPTANCE_FAIL`.
 
 Stage 72 реализован только как shadow action planning. Реальные HA service
 calls запрещены и не выполнялись; production services не перезапускались и
@@ -24,3 +24,10 @@ calls запрещены и не выполнялись; production services н�
 
 Evidence report:
 [`reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md`](reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md).
+
+Финальная независимая real-home приёмка: 56/60 PASS, `WRONG_TARGET=0`,
+`MISSED_EXPECTED_PLAN=4`, `HA_POST=0`, P95 1.8387 s. Четыре допустимые
+команды получили model clarification вместо shadow plan. Поэтому Stage 72
+остаётся FAIL; архитектура и production не изменялись, Stage 73 не начат.
+Отчёт:
+[`reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md`](reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md).

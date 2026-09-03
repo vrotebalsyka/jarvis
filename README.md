@@ -53,6 +53,9 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 Stage 72 live acceptance использует production metadata и локальную модель, но
 физически блокирует HA POST. Evidence report:
 [`reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md`](reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md).
+Финальная независимая real-home acceptance — `FAIL` (56/60; safety и latency
+gates зелёные):
+[`reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md`](reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md).
 Отчёт Stage 71:
 [`reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md`](reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md).
 Предыдущий аудит:

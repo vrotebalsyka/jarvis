@@ -52,6 +52,16 @@ class ReadAdapterTests(unittest.TestCase):
         self.assertEqual(result["state_value"], 48.5)
         self.assertNotIn("attributes", result)
 
+    def test_unknown_and_unavailable_are_distinct_fresh_facts(self) -> None:
+        now = datetime.now(timezone.utc)
+        for raw, expected in (("unknown", "unknown"), ("unavailable", "unavailable")):
+            result = adapter._state("sensor.fixture", {
+                "entity_id": "sensor.fixture", "state": raw,
+                "last_updated": now.isoformat(), "attributes": {},
+            }, now)
+            self.assertEqual(result["state_kind"], expected)
+            self.assertIsNone(result["state_value"])
+
     def test_duplicate_json_keys_fail_closed(self) -> None:
         with self.assertRaises(adapter.AdapterError):
             adapter.strict_json_loads(b'{"a":1,"a":2}')

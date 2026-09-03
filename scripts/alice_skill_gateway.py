@@ -293,6 +293,7 @@ def skill_response(text: str, *, end_session: bool = False) -> dict[str, Any]:
 class SessionRecord:
     touched_at: float
     history: list[dict[str, str]] = field(default_factory=list)
+    focus: bounded_ha_agent.SessionFocus = field(default_factory=bounded_ha_agent.SessionFocus)
     last_message_id: int = -1
     last_response: dict[str, Any] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -532,7 +533,9 @@ class SkillApplication:
                     "Локальная модель ещё запускается. Повторите через несколько секунд."
                 ), "model_starting"
             else:
-                answer = self.answerer(turn.utterance, dict(self.context), list(record.history))
+                turn_context = dict(self.context)
+                turn_context["session_focus"] = record.focus
+                answer = self.answerer(turn.utterance, turn_context, list(record.history))
                 speech = compact_model_speech(answer)
                 response, route = skill_response(speech), "read_only_conversation"
                 record.history.extend([

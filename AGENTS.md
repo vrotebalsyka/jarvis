@@ -9,12 +9,17 @@ Production строго read-only. Ответ модели не считаетс
 
 Обычная реплика имеет ровно один путь:
 
-`Web/Alice → owner_chat → bounded_ha_agent → inventory/MCP resolver → fresh HA GET → grounded answer`.
+`Web/Alice → owner_chat → bounded_ha_agent → HomeGraph/resolver → fresh HA GET → ReadReceipt → grounded answer`.
 
 - Не добавлять второй router, resolver, HomeGraph, renderer или HA query path.
 - Единственный граф — `home_assistant_inventory.py`.
 - Единственный resolver — `home_assistant_mcp.py`.
-- Разрешённые операции: compact index, find physical devices, current details.
+- Persistent HomeGraph содержит только metadata для physical, logical, area и
+  integration nodes; current state в нём запрещён.
+- Host строит candidates. Модель может вернуть только turn-local opaque ref или
+  clarification; технические и capability IDs запрещены.
+- Session focus только ephemeral: last target/feature, pending clarification и
+  TTL. Persistent dialog memory запрещена.
 - Не добавлять control, action plans, recovery, scheduler, reminders, learning,
   onboarding, diagnostics automation или persistent memory.
 - Не добавлять правила конкретных реальных устройств в runtime. Они допустимы

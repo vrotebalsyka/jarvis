@@ -1,0 +1,40 @@
+{"utterance":"Какой сейчас статус у Андрея?","target_pattern":"^Андрей$","feature":"status"}
+{"utterance":"Сколько заряда осталось у Андрея?","target_pattern":"^Андрей$","feature":"battery"}
+{"utterance":"Какое состояние у Roborock S5 Max?","target_pattern":"^Roborock S5 Max$","feature":"status"}
+{"utterance":"Покажи заряд Roborock S5 Max","target_pattern":"^Roborock S5 Max$","feature":"battery"}
+{"utterance":"Что сейчас с обхаркивателем?","target_pattern":"^обхаркиватель$","feature":"status"}
+{"utterance":"Проверь питание мойки воздуха","target_pattern":"^обхаркиватель$","feature":"power"}
+{"utterance":"Работает ли посудомойка?","target_pattern":"^Dishwasher$","feature":"status"}
+{"utterance":"Какое питание у посудомойки?","target_pattern":"^Dishwasher$","feature":"power"}
+{"utterance":"Покажи датчик присутствия 24G","target_pattern":"^24G-Presence Sensor V3$","feature":"status","clarification":true}
+{"utterance":"Какой статус у 24G Presence Sensor?","target_pattern":"^24G-Presence Sensor V3$","feature":"status","clarification":true}
+{"utterance":"Какой режим у камеры CW700S?","target_pattern":"^Xiaomi Outdoor Camera CW700S$","feature":"mode"}
+{"utterance":"Проверь статус камеры CW700S","target_pattern":"^Xiaomi Outdoor Camera CW700S$","feature":"status"}
+{"utterance":"Какое состояние BASE?","target_pattern":"^BASE$","feature":"status"}
+{"utterance":"Покажи текущий статус BASE","target_pattern":"^BASE$","feature":"status"}
+{"utterance":"Включён ли ночник?","target_pattern":"^ночник$","feature":"power"}
+{"utterance":"Проверь состояние ночника","target_pattern":"^ночник$","feature":"status"}
+{"utterance":"Какое питание у зеркала?","target_pattern":"^зеркало$","feature":"power","clarification":true}
+{"utterance":"Покажи статус зеркала","target_pattern":"^зеркало$","feature":"status","clarification":true}
+{"utterance":"Какое питание у реле вентилятора?","target_pattern":"^реле вентилятора$","feature":"power","clarification":true}
+{"utterance":"Проверь реле вентилятора","target_pattern":"^реле вентилятора$","feature":"status","clarification":true}
+{"utterance":"Какой статус у устройств кабинета?","target_pattern":"^кабинет$","feature":"status","clarification":true}
+{"utterance":"Покажи питание в кабинете","target_pattern":"^кабинет$","feature":"power","clarification":true}
+{"utterance":"Какой статус у устройств кухни?","target_pattern":"^кухня$","feature":"status","clarification":true}
+{"utterance":"Покажи питание на кухне","target_pattern":"^кухня$","feature":"power","clarification":true}
+{"utterance":"Проверь состояние коридора","target_pattern":"^коридор$","feature":"status"}
+{"utterance":"Какое питание в коридоре?","target_pattern":"^коридор$","feature":"power"}
+{"utterance":"Какое состояние у ванной?","target_pattern":"^Ванная туале$","feature":"status"}
+{"utterance":"Покажи питание ванной","target_pattern":"^Ванная туале$","feature":"power"}
+{"utterance":"Какое состояние у туалета?","target_pattern":"^туалет прихожка$","feature":"status","clarification":true}
+{"utterance":"Проверь питание туалета","target_pattern":"^туалет прихожка$","feature":"power","clarification":true}
+{"utterance":"Какое состояние гардероба?","target_pattern":"^гардероб$","feature":"status","clarification":true}
+{"utterance":"Покажи питание в гардеробе","target_pattern":"^гардероб$","feature":"power","clarification":true}
+{"utterance":"Какой статус у вытяжки?","target_pattern":"^вытяжка$","feature":"status"}
+{"utterance":"Покажи питание вытяжки","target_pattern":"^вытяжка$","feature":"power"}
+{"utterance":"Какой статус у вытяжки на кухне?","target_pattern":"^Вытяжка на кухне$","feature":"status"}
+{"utterance":"Покажи питание вытяжки на кухне","target_pattern":"^Вытяжка на кухне$","feature":"power"}
+{"utterance":"Какое состояние Яндекс Станции Макс?","target_pattern":"^Яндекс Станция Макс PM2B$","feature":"status"}
+{"utterance":"Проверь Яндекс Станцию Макс","target_pattern":"^Яндекс Станция Макс PM2B$","feature":"status"}
+{"utterance":"Какое состояние Станции Мини?","target_pattern":"^Станция Мини new$","feature":"status"}
+{"utterance":"Проверь Станцию Мини","target_pattern":"^Станция Мини new$","feature":"status"}

@@ -309,7 +309,9 @@ def _state(entity_id: str, raw: Any, now: datetime) -> dict[str, Any]:
     kind = "redacted"
     safe_value: str | float | None = None
     if isinstance(value, str) and 1 <= len(value) <= 128 and not SENSITIVE_TEXT_RE.search(value):
-        if value in {"unknown", "unavailable"}:
+        if value == "unknown":
+            kind = "unknown"
+        elif value == "unavailable":
             kind = "unavailable"
         elif NUMBER_STATE_RE.fullmatch(value):
             number = float(value)

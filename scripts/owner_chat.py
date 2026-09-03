@@ -31,9 +31,12 @@ class OwnerChatError(RuntimeError):
 
 
 def startup_context() -> dict[str, Any]:
-    """Return the small immutable context shared by Web and Alice."""
+    """Create one ephemeral focus object for exactly one transport session."""
 
-    return {"mode": "read_only", "home_graph": "home_assistant_inventory"}
+    return {
+        "mode": "read_only", "home_graph": "home_assistant_inventory",
+        "session_focus": bounded_ha_agent.SessionFocus(),
+    }
 
 
 def answer_natural(

@@ -15,6 +15,7 @@ class RepositoryContractTests(unittest.TestCase):
             "export_training_dataset.py", "home_assistant_control.py", "model_ha_control.py",
             "model_ha_proof.py", "memory_store.py", "persistent_scheduler.py",
             "device_onboarding.py", "incident_monitor.py", "home_assistant_recovery.py",
+            "run-hermes-gateway.sh",
         }
         present = {path.name for path in (ROOT / "scripts").glob("*") if path.is_file()}
         self.assertFalse(forbidden & present)
@@ -37,8 +38,15 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_only_expected_systemd_units_remain(self) -> None:
         units = {path.name for path in (ROOT / "config" / "systemd").iterdir()}
-        self.assertEqual(len(units), 12)
+        self.assertEqual(len(units), 11)
+        self.assertNotIn("home-butler.service", units)
         self.assertFalse(any("recovery" in name or "scheduler" in name for name in units))
+
+    def test_hermes_and_optional_mcp_transport_are_absent(self) -> None:
+        self.assertEqual(list((ROOT / "hermes").glob("*") if (ROOT / "hermes").exists() else ()), [])
+        source = (ROOT / "scripts" / "home_assistant_mcp.py").read_text(encoding="utf-8")
+        for marker in ("stdio_server", "@server.list_tools", "@server.call_tool", "anyio.run"):
+            self.assertNotIn(marker, source)
 
     def test_tracked_markdown_is_closed_set(self) -> None:
         output = subprocess.check_output(["git", "ls-files", "*.md"], cwd=ROOT, text=True)
@@ -46,6 +54,7 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(tracked, {
             "README.md", "AGENTS.md", "SECURITY.md", "SOUL.md", "ARCHITECTURE.md",
             "CURRENT-GOAL.md", "reports/STAGE-69-LIVE-AUDIT-2026-09-01.md",
+            "reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md",
         })
 
 

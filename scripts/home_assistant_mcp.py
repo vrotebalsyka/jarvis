@@ -1,31 +1,15 @@
 #!/usr/bin/env python3
-"""The only Home Assistant inventory resolver and read-only MCP boundary."""
+"""The single host-only HomeGraph resolver; no MCP transport or model IDs."""
 
 from __future__ import annotations
 
-import os
+import json
 import re
-import stat
 import sys
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
-
-try:
-    import anyio
-    from mcp import types
-    from mcp.server.lowlevel import NotificationOptions, Server
-    from mcp.server.models import InitializationOptions
-    from mcp.server.stdio import stdio_server
-    MCP_RUNTIME_AVAILABLE = True
-except ModuleNotFoundError:  # semantic helpers remain dependency-free in tests
-    anyio = None  # type: ignore[assignment]
-    types = None  # type: ignore[assignment]
-    NotificationOptions = None  # type: ignore[assignment]
-    InitializationOptions = None  # type: ignore[assignment]
-    stdio_server = None  # type: ignore[assignment]
-    Server = None  # type: ignore[assignment]
-    MCP_RUNTIME_AVAILABLE = False
+from typing import Any, Iterable, Mapping, Sequence
 
 
 sys.dont_write_bytecode = True
@@ -36,92 +20,210 @@ import home_assistant_inventory as inventory_builder  # noqa: E402
 import home_assistant_read as adapter  # noqa: E402
 
 
-MAX_INVENTORY_BYTES = 8 * 1_048_576
-DEFAULT_INVENTORY_PATH = Path(
-    "/home/homebutler/.local/state/home-butler/inventory.json"
+MAX_INVENTORY_BYTES = inventory_builder.MAX_INVENTORY_BYTES
+FEATURES = frozenset({
+    "power", "status", "battery", "filter", "main_brush", "side_brush",
+    "humidity", "temperature", "child_lock", "mode", "error",
+    "consumables", "unknown",
+})
+TYPE_CONCEPTS: dict[str, frozenset[str]] = {
+    "dishwasher": frozenset({"dishwasher", "посудомойка", "посудомоечная"}),
+    "light": frozenset({"light", "свет", "освещение", "лампа", "светильник", "ночник"}),
+    "vacuum": frozenset({"vacuum", "robot", "робот", "пылесос"}),
+    "switch": frozenset({"switch", "реле", "выключатель", "розетка"}),
+    "media_player": frozenset({"media player", "колонка", "станция"}),
+    "camera": frozenset({"camera", "камера"}),
+    "sensor": frozenset({"sensor", "датчик"}),
+    "binary_sensor": frozenset({"binary sensor", "датчик"}),
+    "fan": frozenset({"fan", "вентилятор", "вытяжка"}),
+    "humidifier": frozenset({"humidifier", "увлажнитель", "мойка воздуха"}),
+}
+FEATURE_TERMS: dict[str, tuple[str, ...]] = {
+    "main_brush": ("основная щетка", "основной щетки", "основной щётки", "main brush"),
+    "side_brush": ("боковая щетка", "боковой щетки", "боковой щётки", "side brush"),
+    "child_lock": ("детский замок", "защита от детей", "блокировка от детей", "child lock"),
+    "battery": ("батарея", "батареи", "заряд", "заряда", "аккумулятор"),
+    "filter": ("фильтр", "фильтра"),
+    "humidity": ("влажность", "влажности"),
+    "temperature": ("температура", "температуры", "градусов"),
+    "power": ("питание", "включен", "включена", "включено", "выключен", "выключена"),
+    "mode": ("режим", "режима", "mode"),
+    "error": ("ошибка", "ошибки", "неисправность", "проблема"),
+    "consumables": ("расходники", "расходников", "ресурс щеток", "ресурс щёток"),
+    "status": ("статус", "состояние", "работает", "что с"),
+    "unknown": ("неизвестный параметр", "неизвестный показатель", "unknown feature"),
+}
+FEATURE_PUBLIC_LABELS = {
+    "power": "питание", "status": "состояние", "battery": "заряд",
+    "filter": "ресурс фильтра", "main_brush": "ресурс основной щётки",
+    "side_brush": "ресурс боковой щётки", "humidity": "влажность",
+    "temperature": "температура", "child_lock": "защита от детей",
+    "mode": "режим", "error": "ошибка", "consumables": "расходники",
+    "unknown": "неизвестный показатель",
+}
+TECHNICAL_LABEL_RE = re.compile(
+    r"^(?:[a-z][a-z0-9_]*\.[a-z0-9_]+|[a-f0-9]{32,64})$|/api/",
+    re.IGNORECASE,
 )
-EMPTY_INPUT_SCHEMA: dict[str, Any] = {
-    "type": "object", "properties": {}, "additionalProperties": False,
-}
-FIND_DEVICES_INPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "query": {"type": "string", "maxLength": 120},
-        "area": {"type": "string", "maxLength": 100},
-        "integration": {"type": "string", "pattern": "^[a-z0-9_]{0,64}$"},
-        "offset": {"type": "integer", "minimum": 0, "maximum": 4095},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 32},
-    },
-    "additionalProperties": False,
-}
-DEVICE_INPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "physical_device_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    },
-    "required": ["physical_device_hash"],
-    "additionalProperties": False,
-}
-
-
-class _DecoratorOnlyServer:
-    @staticmethod
-    def list_tools() -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return lambda function: function
-
-    @staticmethod
-    def call_tool() -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return lambda function: function
-
-    def get_capabilities(self, **_kwargs: Any) -> Any:
-        raise RuntimeError("MCP runtime dependency is unavailable")
-
-
-server = (
-    Server(
-        "home-assistant-read",
-        version="3.0.0",
-        instructions=(
-            "Read current sanitized facts through the one Home Assistant "
-            "inventory. No service calls or action tools exist."
-        ),
-    )
-    if MCP_RUNTIME_AVAILABLE and Server is not None
-    else _DecoratorOnlyServer()
+QUERY_STOPWORDS = frozenset({
+    "а", "без", "бы", "в", "во", "где", "дай", "для", "есть", "за", "и",
+    "из", "как", "какая", "какие", "какой", "какое", "ли", "мне", "мой",
+    "моя", "моего", "на", "над", "о", "об", "от", "по", "под", "покажи",
+    "показать", "проверь", "проверить", "про", "с", "сейчас", "сколько", "со",
+    "там", "текущий", "текущее", "у", "что", "пожалуйста", "скажи", "устройство",
+    "устройства", "свежие", "свежий", "данные", "текущие", "осталось", "остался",
+    "осталась", "включи", "выключи", "переключи", "нажми", "запусти", "останови",
+    "нет", "не", "лучше", "имел", "виду",
+    "home", "assistant", "ha", "нужен", "нужна", "нужно", "только", "прочитай",
+    "интересует", "уточни", "догадок", "изменяется", "сообщи", "известно",
+    "показание", "предположений", "можно", "узнать", "посмотри", "показывает",
+    "показывать",
+    "почему", "отчего", "причина", "причины", "устройств",
+    "ресурс", "ресурса", "процент", "процентов",
+})
+RU_ENDINGS = (
+    "иями", "ями", "ами", "ого", "ему", "ому", "ыми", "ими", "остью", "ую",
+    "юю", "ая", "яя", "ое", "ее", "ой", "ей", "ов", "ев", "ом", "ем", "ах",
+    "ях", "ам", "ям", "ы", "и", "а", "я", "у", "ю", "е",
 )
 
 
-def inventory_path() -> Path:
-    raw = os.environ.get("HOME_BUTLER_INVENTORY_FILE", "")
-    return Path(raw) if raw else DEFAULT_INVENTORY_PATH
+@dataclass(frozen=True, slots=True)
+class Resolution:
+    tier: str
+    target_refs: tuple[str, ...]
+    candidates: tuple[dict[str, Any], ...]
+    weak: bool = False
+
+
+def normalize_text(value: Any) -> str:
+    if not isinstance(value, str) or not 1 <= len(value) <= 512:
+        raise ValueError("invalid owner text")
+    normalized = unicodedata.normalize("NFKC", value).casefold().replace("ё", "е")
+    if any(unicodedata.category(character).startswith("C") for character in normalized):
+        raise ValueError("invalid owner text")
+    if adapter.SENSITIVE_TEXT_RE.search(normalized):
+        raise ValueError("invalid owner text")
+    return " ".join(re.findall(r"[a-zа-я0-9]+", normalized))
+
+
+def resolve_feature(value: str) -> str:
+    normalized = normalize_text(value)
+    # Long, specific phrases win before generic words such as resource/status.
+    for feature in (
+        "main_brush", "side_brush", "child_lock", "consumables", "battery",
+        "filter", "humidity", "temperature", "power", "mode", "error", "unknown", "status",
+    ):
+        if any(normalize_text(term) in normalized for term in FEATURE_TERMS[feature]):
+            return feature
+    if "щетк" in normalized or "щеток" in normalized:
+        return "consumables"
+    tokens = _tokens(normalized)
+    for feature in (
+        "main_brush", "side_brush", "child_lock", "battery", "filter",
+        "humidity", "temperature", "power", "mode", "error", "consumables",
+    ):
+        if any(
+            _weak_word(token, term_token)
+            for token in tokens for term in FEATURE_TERMS[feature]
+            for term_token in _tokens(normalize_text(term))
+        ):
+            return feature
+    return "status"
+
+
+def _tokens(value: str) -> list[str]:
+    return value.split()
+
+
+def _stem(token: str) -> str:
+    if len(token) < 5 or not re.search(r"[а-я]", token):
+        return token
+    for ending in RU_ENDINGS:
+        if token.endswith(ending) and len(token) - len(ending) >= 4:
+            return token[:-len(ending)]
+    return token
+
+
+def _edit_distance(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if abs(len(left) - len(right)) > 2:
+        return 3
+    previous = list(range(len(right) + 1))
+    for row, a in enumerate(left, 1):
+        current = [row]
+        for column, b in enumerate(right, 1):
+            current.append(min(
+                current[-1] + 1, previous[column] + 1,
+                previous[column - 1] + (a != b),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def _weak_word(left: str, right: str) -> bool:
+    a, b = _stem(left), _stem(right)
+    if a == b or (min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a))):
+        return True
+    limit = 1 if max(len(a), len(b)) < 8 else 2
+    return min(len(a), len(b)) >= 5 and _edit_distance(a, b) <= limit
+
+
+def _word_quality(left: str, right: str) -> int:
+    if left == right:
+        return 3
+    if _stem(left) == _stem(right):
+        return 2
+    if min(len(_stem(left)), len(_stem(right))) >= 4 and _edit_distance(_stem(left), _stem(right)) <= 1:
+        return 2
+    return 1 if _weak_word(left, right) else 0
+
+
+def _phrase_present(phrase: str, query: str) -> bool:
+    phrase_tokens = _tokens(normalize_text(phrase))
+    query_tokens = _tokens(query)
+    width = len(phrase_tokens)
+    return bool(width) and any(query_tokens[index:index + width] == phrase_tokens for index in range(len(query_tokens) - width + 1))
+
+
+def _feature_words() -> set[str]:
+    result: set[str] = set()
+    for terms in FEATURE_TERMS.values():
+        for term in terms:
+            result.update(_tokens(normalize_text(term)))
+    return result
+
+
+FEATURE_WORDS = frozenset(_feature_words())
+
+
+def normalize_device_query(value: Any, feature: str | None = None) -> str:
+    normalized = normalize_text(value)
+    del feature
+    # Target resolution is independent of how many feature words a compound
+    # read contains, so every closed-vocabulary feature phrase is removed.
+    removed_features = FEATURES
+    removed_words = {
+        token for name in removed_features if name in FEATURE_TERMS
+        for term in FEATURE_TERMS[name] for token in _tokens(normalize_text(term))
+    }
+    tokens = [
+        token for token in _tokens(normalized)
+        if token not in QUERY_STOPWORDS
+        and token not in removed_words
+        and not any(_weak_word(token, feature_word) for feature_word in removed_words)
+    ]
+    return " ".join(tokens)
 
 
 def load_inventory(path: Path | None = None) -> dict[str, Any]:
-    """Open the private graph without following links or accepting broad modes."""
-
-    selected = inventory_path() if path is None else path
+    target = inventory_builder.inventory_path() if path is None else path
     try:
-        metadata = selected.lstat()
+        raw = target.read_bytes()
     except OSError as error:
         raise ValueError("inventory unavailable") from error
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_uid != os.geteuid()
-        or metadata.st_nlink != 1
-        or metadata.st_mode & 0o077
-        or not 0 < metadata.st_size <= MAX_INVENTORY_BYTES
-    ):
-        raise ValueError("inventory unavailable")
-    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(selected, flags)
-        try:
-            raw = os.read(descriptor, MAX_INVENTORY_BYTES + 1)
-        finally:
-            os.close(descriptor)
-    except OSError as error:
-        raise ValueError("inventory unavailable") from error
-    if len(raw) > MAX_INVENTORY_BYTES:
+    if not raw or len(raw) > MAX_INVENTORY_BYTES:
         raise ValueError("inventory unavailable")
     try:
         document = adapter.strict_json_loads(raw)
@@ -130,333 +232,306 @@ def load_inventory(path: Path | None = None) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise ValueError("inventory unavailable")
     try:
-        return inventory_builder.migrate_inventory_document(document)
+        return inventory_builder.validate_inventory_document(document)
     except inventory_builder.InventoryError as error:
         raise ValueError("inventory unavailable") from error
 
 
-_QUERY_STOPWORDS = frozenset({
-    "а", "без", "бы", "в", "во", "где", "дай", "для", "есть", "за", "и",
-    "из", "как", "какая", "какие", "какой", "какое", "ли", "мне", "мой",
-    "моя", "моего", "на", "над", "о", "об", "от", "по", "под", "покажи",
-    "показать", "проверь", "проверить", "про", "с", "сейчас", "сколько", "со",
-    "статус", "состояние", "там", "текущий", "текущее", "у", "что",
-    "работает", "работают", "осталось", "остался", "осталась",
-    "пожалуйста", "показывает", "покажи", "скажи", "устройство", "устройства",
-    "свежие", "свежий", "данные", "текущие", "текущее",
-    "включи", "выключи", "переключи", "нажми", "запусти", "останови",
-})
-_MEASUREMENT_WORDS = frozenset({
-    "батарея", "батареи", "заряд", "заряда", "ресурс", "ресурса", "ресурсы",
-    "фильтр", "фильтра", "щетка", "щетки", "щётка", "щётки", "швабра",
-    "швабры", "питание", "питания", "основная", "основной", "основную",
-    "боковая", "боковой", "боковую",
-})
-_RU_ENDINGS = (
-    "иями", "ями", "ами", "ого", "ему", "ому", "ыми", "ими", "остью",
-    "остью", "ую", "юю", "ая", "яя", "ое", "ее", "ой", "ей", "ов", "ев",
-    "ом", "ем", "ах", "ях", "ам", "ям", "ы", "и", "а", "я", "у", "ю", "е",
-)
-TYPE_CONCEPTS: dict[str, frozenset[str]] = {
-    "dishwasher": frozenset({"dishwasher", "посудомойка", "посудомоечная"}),
-    "light": frozenset({"light", "свет", "освещение", "лампа", "светильник", "ночник"}),
-    "vacuum": frozenset({"vacuum", "robot", "робот", "пылесос"}),
-    "switch": frozenset({"switch", "реле", "выключатель", "розетка"}),
-    "media_player": frozenset({"media_player", "колонка", "станция"}),
-    "camera": frozenset({"camera", "камера"}),
-    "sensor": frozenset({"sensor", "датчик"}),
-    "fan": frozenset({"fan", "вентилятор", "вытяжка"}),
-    "humidifier": frozenset({"humidifier", "увлажнитель"}),
-}
-
-
-def _resolver_tokens(value: str) -> list[str]:
-    return re.findall(
-        r"[a-zа-яё0-9]+",
-        unicodedata.normalize("NFKC", value).casefold().replace("ё", "е"),
-    )
-
-
-def normalize_device_query(value: Any) -> str:
-    """Remove generic request/measurement words, preserving names/types/rooms."""
-
-    if not isinstance(value, str) or not 1 <= len(value) <= 512:
-        raise ValueError("invalid device query")
-    safe = unicodedata.normalize("NFKC", " ".join(value.split()))
-    if (
-        not safe or any(unicodedata.category(char).startswith("C") for char in safe)
-        or adapter.SENSITIVE_TEXT_RE.search(safe)
-    ):
-        raise ValueError("invalid device query")
-    tokens = [
-        token for token in _resolver_tokens(safe)
-        if token not in _QUERY_STOPWORDS and token not in _MEASUREMENT_WORDS
-    ]
-    if not tokens:
-        tokens = [
-            token for token in _resolver_tokens(safe)
-            if token not in _QUERY_STOPWORDS
-        ]
-    return " ".join(tokens)[:120]
-
-
-def _safe_query(value: Any) -> str:
-    if value in {None, ""}:
-        return ""
-    if not isinstance(value, str) or len(value) > 512:
-        raise ValueError("invalid search query")
-    safe = unicodedata.normalize("NFKC", " ".join(value.split()))
-    if (
-        any(unicodedata.category(char).startswith("C") for char in safe)
-        or adapter.SENSITIVE_TEXT_RE.search(safe)
-    ):
-        raise ValueError("invalid search query")
-    return safe.casefold()
-
-
-def _token_stem(value: str) -> str:
-    token = value.casefold().replace("ё", "е")
-    if len(token) < 5 or not re.search(r"[а-я]", token):
-        return token
-    for ending in _RU_ENDINGS:
-        if token.endswith(ending) and len(token) - len(ending) >= 4:
-            return token[:-len(ending)]
-    return token
-
-
-def _word_match(query: str, candidate: str) -> bool:
-    left = _token_stem(query)
-    right = _token_stem(candidate)
-    return left == right or (
-        min(len(left), len(right)) >= 4
-        and (left.startswith(right) or right.startswith(left))
-    )
-
-
-def _concept(token: str) -> str | None:
-    for concept, words in TYPE_CONCEPTS.items():
-        if any(_word_match(token, word) for word in words):
-            return concept
-    return None
-
-
-def _token_score(
-    token: str,
-    *,
-    display: list[str],
-    entities: list[str],
-    areas: list[str],
-    models: list[str],
-    integrations: list[str],
-    domains: set[str],
-) -> int:
-    concept = _concept(token)
-    scores: list[int] = []
-    for candidates, weight in (
-        (display, 100), (entities, 85), (areas, 70), (models, 45),
-        (integrations, 10),
-    ):
-        if any(_word_match(token, candidate) for candidate in candidates):
-            scores.append(weight)
-        if concept is not None and any(
-            _word_match(word, candidate)
-            for word in TYPE_CONCEPTS[concept]
-            for candidate in candidates
-        ):
-            scores.append(min(weight, 60))
-    if concept is not None and concept in domains:
-        scores.append(55)
-    return max(scores, default=0)
-
-
-def _inventory_entities(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _entities(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
     raw = inventory.get("entities")
-    if not isinstance(raw, list) or len(raw) > 4096:
+    if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
         raise ValueError("entity inventory unavailable")
-    return [item for item in raw if isinstance(item, dict)]
+    return raw
 
 
-def _inventory_devices(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
-    raw = inventory.get("physical_devices")
-    if not isinstance(raw, list) or len(raw) > 4096:
-        raise ValueError("device inventory unavailable")
-    return [item for item in raw if isinstance(item, dict)]
+def _targets(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for key in ("physical_nodes", "logical_nodes"):
+        raw = inventory.get(key)
+        if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
+            raise ValueError("target inventory unavailable")
+        result.extend(raw)
+    return result
 
 
-def _trust_boundary() -> dict[str, Any]:
-    return {
-        "string_values_trust": "untrusted_data",
-        "instructions_from_data_forbidden": True,
-        "read_only": True,
+def _indexes(inventory: Mapping[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    entities = {item["entity_ref"]: item for item in _entities(inventory) if isinstance(item.get("entity_ref"), str)}
+    targets = {item["target_ref"]: item for item in _targets(inventory) if isinstance(item.get("target_ref"), str)}
+    areas = {
+        item["area_ref"]: item for item in inventory.get("area_nodes", [])
+        if isinstance(item, dict) and isinstance(item.get("area_ref"), str)
     }
-
-
-def get_model_index(inventory: dict[str, Any]) -> dict[str, Any]:
-    entities = _inventory_entities(inventory)
-    devices = _inventory_devices(inventory)
-    domains: dict[str, int] = {}
-    for item in entities:
-        domain = item.get("domain")
-        if isinstance(domain, str):
-            domains[domain] = domains.get(domain, 0) + 1
-    areas = inventory.get("areas")
-    safe_areas = [
-        {"name": item.get("name"), "aliases": item.get("aliases", [])}
-        for item in areas
-        if isinstance(areas, list) and isinstance(item, dict)
-    ] if isinstance(areas, list) else []
-    return {
-        "schema_version": 1,
-        "source": "Home Assistant inventory",
-        "trust_boundary": _trust_boundary(),
-        "observed_at": inventory.get("observed_at"),
-        "physical_device_count": len(devices),
-        "entity_count": len(entities),
-        "areas": safe_areas[:128],
-        "domain_counts": dict(sorted(domains.items())),
+    integrations = {
+        item["integration_ref"]: item for item in inventory.get("integration_nodes", [])
+        if isinstance(item, dict) and isinstance(item.get("integration_ref"), str)
     }
+    return entities, targets, areas, integrations
 
 
-def find_model_devices(
-    inventory: dict[str, Any],
-    *,
-    query: Any = "",
-    area: Any = "",
-    integration: Any = "",
-    offset: Any = 0,
-    limit: Any = 16,
+def _target_profile(
+    target: Mapping[str, Any], entities: Mapping[str, Mapping[str, Any]],
+    areas: Mapping[str, Mapping[str, Any]], integrations: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
-    normalized_query = _safe_query(query)
-    normalized_area = _safe_query(area)
-    if not isinstance(integration, str) or re.fullmatch(r"[a-z0-9_]{0,64}", integration) is None:
-        raise ValueError("invalid integration")
-    if not isinstance(offset, int) or isinstance(offset, bool) or not 0 <= offset <= 4095:
-        raise ValueError("invalid device offset")
-    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 32:
-        raise ValueError("invalid device limit")
-    entity_by_id = {
-        str(item["entity_id"]): item
-        for item in _inventory_entities(inventory)
-        if isinstance(item.get("entity_id"), str)
+    members = [entities[ref] for ref in target.get("entity_refs", []) if ref in entities]
+    enabled = [item for item in members if not item.get("disabled") and not item.get("hidden")]
+    names = [str(value) for value in target.get("names", []) if isinstance(value, str)]
+    aliases = [str(value) for value in target.get("aliases", []) if isinstance(value, str)]
+    entity_names = [
+        str(value) for item in enabled
+        for key in ("display_name", "name", "original_name")
+        for value in [item.get(key)] if isinstance(value, str)
+    ]
+    entity_aliases = [
+        str(value) for item in enabled for value in item.get("aliases", []) if isinstance(value, str)
+    ]
+    area_names = [
+        str(value) for ref in target.get("area_refs", []) if ref in areas
+        for key in ("name",) for value in [areas[ref].get(key)] if isinstance(value, str)
+    ]
+    area_aliases = [
+        str(value) for ref in target.get("area_refs", []) if ref in areas
+        for value in areas[ref].get("aliases", []) if isinstance(value, str)
+    ]
+    domains = {str(item.get("domain")) for item in enabled if isinstance(item.get("domain"), str)}
+    classes = {str(item.get("device_class")) for item in enabled if isinstance(item.get("device_class"), str)}
+    platforms = {
+        str(integrations[ref].get("platform")) for item in enabled
+        for ref in item.get("integration_refs", []) if ref in integrations
+        if isinstance(integrations[ref].get("platform"), str)
     }
-    query_tokens = _resolver_tokens(normalized_query)
-    matches: list[dict[str, Any]] = []
-    for device in _inventory_devices(inventory):
-        physical_id = device.get("physical_device_hash")
-        if not isinstance(physical_id, str) or re.fullmatch(r"[a-f0-9]{64}", physical_id) is None:
-            continue
-        entity_ids = device.get("entity_ids")
-        members = [
-            entity_by_id[value] for value in entity_ids
-            if isinstance(entity_ids, list) and value in entity_by_id
-        ] if isinstance(entity_ids, list) else []
-        area_values = {
-            value
-            for field in ("area_names", "area_aliases")
-            for value in (device.get(field) if isinstance(device.get(field), list) else [])
-            if isinstance(value, str)
-        }
-        integration_values = {
-            value
-            for item in members
-            for value in (
-                item.get("integration_domains")
-                if isinstance(item.get("integration_domains"), list) else []
-            )
-            if isinstance(value, str)
-        }
-        display_values = [
-            value for field in ("display_name", "name", "name_by_user", "original_name")
-            for value in [device.get(field)] if isinstance(value, str)
-        ]
-        if isinstance(device.get("aliases"), list):
-            display_values.extend(
-                value for value in device["aliases"] if isinstance(value, str)
-            )
-        entity_values = [
-            value for item in members
-            for field in ("friendly_name", "original_name")
-            for value in [item.get(field)] if isinstance(value, str)
-        ]
-        entity_values.extend(
-            value for item in members
-            for value in (
-                item.get("entity_aliases")
-                if isinstance(item.get("entity_aliases"), list) else []
-            )
-            if isinstance(value, str)
-        )
-        model_values = [
-            value for field in ("manufacturers", "models")
-            for value in (device.get(field) if isinstance(device.get(field), list) else [])
-            if isinstance(value, str)
-        ]
-        member_domains = {
-            str(item.get("domain") or str(item.get("entity_id", "")).split(".", 1)[0])
-            for item in members
-        }
-        scores = [
-            _token_score(
-                token,
-                display=_resolver_tokens(" ".join(display_values)),
-                entities=_resolver_tokens(" ".join(entity_values)),
-                areas=_resolver_tokens(" ".join(area_values)),
-                models=_resolver_tokens(" ".join(model_values)),
-                integrations=_resolver_tokens(" ".join(integration_values)),
-                domains=member_domains,
-            )
-            for token in query_tokens
-        ]
-        if query_tokens and any(score == 0 for score in scores):
-            continue
-        if normalized_area and not all(
-            any(_word_match(token, candidate) for candidate in _resolver_tokens(" ".join(area_values)))
-            for token in _resolver_tokens(normalized_area)
-        ):
-            continue
-        if integration and integration not in integration_values:
-            continue
-        matches.append({
-            "_score": sum(scores) + (
-                250 if normalized_query and any(
-                    _resolver_tokens(normalized_query) == _resolver_tokens(value)
-                    for value in display_values
-                ) else 0
-            ),
-            "physical_device_id": physical_id,
-            "display_name": device.get("display_name"),
-            "areas": sorted(area_values),
-            "integrations": sorted(integration_values),
-            "entity_count": len(members),
-            "available_entity_count": device.get("available_entity_count", 0),
-            "unavailable_entity_count": device.get("unavailable_entity_count", 0),
-        })
-    matches.sort(key=lambda item: (
-        -int(item.get("_score", 0)),
-        str(item.get("display_name") or "").casefold(),
-        str(item.get("physical_device_id") or ""),
-    ))
-    # A name/entity hit must outrank a looser area-only hit. This prevents a
-    # room word such as "кухня" from silently adding every device in that area.
-    if query_tokens and matches:
-        top_score = int(matches[0].get("_score", 0))
-        matches = [item for item in matches if int(item.get("_score", 0)) == top_score]
-    for item in matches:
-        item.pop("_score", None)
-    selected = matches[offset:offset + limit]
+    features = {str(item.get("component")) for item in enabled if item.get("component") in FEATURES}
     return {
-        "schema_version": 1,
-        "source": "Home Assistant inventory",
-        "trust_boundary": _trust_boundary(),
-        "matched_device_count": len(matches),
-        "returned_device_count": len(selected),
-        "offset": offset,
-        "next_offset": offset + len(selected) if offset + len(selected) < len(matches) else None,
-        "devices": selected,
+        "target_ref": target.get("target_ref"), "kind": target.get("kind"),
+        "display_name": target.get("display_name") or (entity_names[0] if entity_names else "Устройство"),
+        "names": names, "aliases": aliases, "entity_names": entity_names,
+        "entity_aliases": entity_aliases, "areas": area_names, "area_aliases": area_aliases,
+        "domains": domains, "device_classes": classes, "platforms": platforms,
+        "manufacturer_model": [
+            str(value) for value in (target.get("manufacturer"), target.get("model")) if isinstance(value, str)
+        ],
+        "features": features, "enabled_members": enabled,
     }
 
 
-def _snapshot_index(snapshot: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def _type_concepts(query: str) -> set[str]:
+    return {
+        concept for concept, words in TYPE_CONCEPTS.items()
+        if any(_phrase_present(word, query) for word in words)
+    }
+
+
+def _weak_type_concepts(query: str) -> set[str]:
+    query_tokens = _tokens(query)
+    return {
+        concept for concept, words in TYPE_CONCEPTS.items()
+        if any(
+            any(
+                _weak_word(token, word_token)
+                for token in query_tokens for word_token in _tokens(normalize_text(word))
+            )
+            for word in words
+        )
+    }
+
+
+def _profile_has_type(profile: Mapping[str, Any], concepts: set[str]) -> bool:
+    domains = profile["domains"]
+    classes = profile["device_classes"]
+    if concepts & (domains | classes):
+        return True
+    values = [*profile["names"], *profile["entity_names"]]
+    return any(
+        _phrase_present(word, normalize_text(value))
+        for value in values if value
+        for concept in concepts for word in TYPE_CONCEPTS[concept]
+    )
+
+
+def _distinctive_tokens(query: str, concepts: set[str]) -> list[str]:
+    type_tokens = [
+        token for concept in concepts for word in TYPE_CONCEPTS[concept]
+        for token in _tokens(normalize_text(word))
+    ]
+    return [
+        token for token in _tokens(query)
+        if not any(_weak_word(token, type_token) for type_token in type_tokens)
+    ]
+
+
+def _exact_any(query: str, values: Iterable[str]) -> bool:
+    return any(normalize_text(value) == query for value in values if value)
+
+
+def _weak_score(query: str, profile: Mapping[str, Any]) -> int:
+    query_tokens = [token for token in _tokens(query) if token not in QUERY_STOPWORDS]
+    if not query_tokens:
+        return 0
+    buckets = (
+        (profile["aliases"], 80), (profile["names"], 75),
+        (profile["entity_aliases"], 65), (profile["entity_names"], 60),
+        ([*profile["areas"], *profile["area_aliases"]], 45),
+        (profile["manufacturer_model"], 25), (profile["platforms"], 10),
+    )
+    candidate_tokens: list[tuple[str, int]] = []
+    for values, weight in buckets:
+        for value in values:
+            if value:
+                candidate_tokens.extend((token, weight) for token in _tokens(normalize_text(value)))
+    matched = [
+        max((weight * _word_quality(token, candidate) for candidate, weight in candidate_tokens), default=0)
+        for token in query_tokens
+    ]
+    if not all(matched):
+        return 0
+    score = sum(matched)
+    for value in [*profile["aliases"], *profile["names"]]:
+        candidate = _tokens(normalize_text(value)) if value else []
+        if len(candidate) == len(query_tokens) and all(_word_quality(a, b) >= 2 for a, b in zip(query_tokens, candidate)):
+            score += 250
+            break
+    return score
+
+
+def _distinctive_score(tokens: Sequence[str], profile: Mapping[str, Any]) -> int:
+    values = [
+        *profile["aliases"], *profile["names"], *profile["entity_aliases"],
+        *profile["entity_names"], *profile["areas"], *profile["area_aliases"],
+        *profile["manufacturer_model"],
+    ]
+    candidate_tokens = [token for value in values if value for token in _tokens(normalize_text(value))]
+    return sum(max((_word_quality(token, candidate) for candidate in candidate_tokens), default=0) for token in tokens)
+
+
+def resolve_targets(
+    inventory: dict[str, Any], utterance: str, feature: str,
+    *, allowed_target_refs: Sequence[str] | None = None,
+) -> Resolution:
+    if feature not in FEATURES:
+        raise ValueError("unknown feature")
+    full_query = normalize_text(utterance)
+    query = normalize_device_query(full_query, feature)
+    entities, targets, areas, integrations = _indexes(inventory)
+    allowed = set(allowed_target_refs) if allowed_target_refs is not None else None
+    profiles = [
+        _target_profile(target, entities, areas, integrations)
+        for ref, target in targets.items()
+        if (allowed is None or ref in allowed)
+    ]
+    profiles = [profile for profile in profiles if profile["enabled_members"]]
+    exact_tiers: list[tuple[str, list[dict[str, Any]]]] = []
+    exact_tiers.append(("exact_alias", [profile for profile in profiles if _exact_any(query, profile["aliases"])]))
+    exact_tiers.append(("exact_name", [profile for profile in profiles if _exact_any(query, profile["names"])]))
+    concepts = _type_concepts(query)
+    area_type = [
+        profile for profile in profiles
+        if any(
+            _phrase_present(value, query)
+            for value in [*profile["areas"], *profile["area_aliases"]] if value
+        )
+        and (_profile_has_type(profile, concepts) if concepts else feature in profile["features"])
+    ]
+    exact_tiers.append(("exact_area_type", area_type))
+    exact_tiers.append(("entity_name_alias", [
+        profile for profile in profiles
+        if _exact_any(query, [*profile["entity_names"], *profile["entity_aliases"]])
+    ]))
+    for tier, matches in exact_tiers:
+        unique = {str(item["target_ref"]): item for item in matches}
+        if unique:
+            selected = tuple(unique[key] for key in sorted(unique))
+            return Resolution(tier, tuple(item["target_ref"] for item in selected), selected)
+
+    type_matches = [profile for profile in profiles if concepts and _profile_has_type(profile, concepts)]
+    physical_type_matches = [profile for profile in type_matches if profile["kind"] == "physical"]
+    if len(physical_type_matches) == 1:
+        selected = tuple(physical_type_matches)
+        return Resolution("domain_device_class", tuple(item["target_ref"] for item in selected), selected)
+    if len(type_matches) == 1:
+        selected = tuple(type_matches)
+        return Resolution("domain_device_class", tuple(item["target_ref"] for item in selected), selected)
+
+    manufacturer_pool = type_matches or profiles
+    manufacturer_matches = [
+        profile for profile in manufacturer_pool
+        if any(_phrase_present(value, query) for value in profile["manufacturer_model"] if value)
+    ]
+    if len(manufacturer_matches) == 1:
+        selected = tuple(sorted(manufacturer_matches, key=lambda item: str(item["target_ref"])))
+        return Resolution("manufacturer_model", tuple(item["target_ref"] for item in selected), selected)
+
+    weak_concepts = concepts or _weak_type_concepts(query)
+    weak_type_matches = [
+        profile for profile in profiles
+        if weak_concepts and _profile_has_type(profile, weak_concepts)
+    ]
+    weak_profiles = manufacturer_matches or type_matches or weak_type_matches or profiles
+    if weak_profiles is profiles and feature not in {"status", "unknown"}:
+        capable = [
+            profile for profile in profiles
+            if feature in profile["features"]
+            or (feature == "consumables" and profile["features"] & {"main_brush", "side_brush", "filter"})
+        ]
+        if capable:
+            weak_profiles = capable
+    distinctive = _distinctive_tokens(query, weak_concepts) if weak_concepts else []
+    physical_weak = [profile for profile in weak_type_matches if profile["kind"] == "physical"]
+    if weak_type_matches and not distinctive and len(physical_weak) == 1:
+        selected = tuple(physical_weak)
+        return Resolution("morphology_typo", tuple(item["target_ref"] for item in selected), selected, True)
+    if distinctive:
+        narrowed = [(_distinctive_score(distinctive, profile), profile) for profile in weak_profiles]
+        if any(score for score, _profile in narrowed):
+            top = max(score for score, _profile in narrowed)
+            selected = tuple(sorted(
+                (profile for score, profile in narrowed if score == top),
+                key=lambda item: str(item["target_ref"]),
+            ))
+            return Resolution("morphology_typo", tuple(item["target_ref"] for item in selected), selected, True)
+    scored = [(score, profile) for profile in weak_profiles if (score := _weak_score(query, profile)) > 0]
+    if scored:
+        top = max(score for score, _profile in scored)
+        selected_profiles = [profile for score, profile in scored if score == top]
+        physical = [profile for profile in selected_profiles if profile["kind"] == "physical"]
+        if weak_concepts and len(physical) == 1:
+            selected_profiles = physical
+        selected = tuple(sorted(selected_profiles, key=lambda item: str(item["target_ref"])))
+        return Resolution("morphology_typo", tuple(item["target_ref"] for item in selected), selected, True)
+    if manufacturer_matches:
+        selected = tuple(sorted(manufacturer_matches, key=lambda item: str(item["target_ref"])))
+        return Resolution("manufacturer_model", tuple(item["target_ref"] for item in selected), selected)
+    if type_matches:
+        selected = tuple(sorted(physical_type_matches or type_matches, key=lambda item: str(item["target_ref"])))
+        return Resolution("domain_device_class", tuple(item["target_ref"] for item in selected), selected)
+    if weak_type_matches:
+        physical = [profile for profile in weak_type_matches if profile["kind"] == "physical"]
+        selected = tuple(sorted(physical or weak_type_matches, key=lambda item: str(item["target_ref"])))
+        return Resolution("morphology_typo", tuple(item["target_ref"] for item in selected), selected, True)
+    return Resolution("none", (), ())
+
+
+def public_candidate(profile: Mapping[str, Any], turn_ref: str) -> dict[str, Any]:
+    def safe_label(value: Any, fallback: str) -> str:
+        if not isinstance(value, str):
+            return fallback
+        normalized = " ".join(value.split())
+        return normalized if normalized and not TECHNICAL_LABEL_RE.search(normalized) else fallback
+
+    return {
+        "ref": turn_ref,
+        "label": safe_label(profile.get("display_name"), "Устройство"),
+        "areas": [
+            safe_label(value, "") for value in list(profile.get("areas", []))[:4]
+            if safe_label(value, "")
+        ],
+        "kind": profile.get("kind"),
+        "features": [
+            FEATURE_PUBLIC_LABELS[value] for value in sorted(profile.get("features", []))
+            if value in FEATURE_PUBLIC_LABELS
+        ],
+    }
+
+
+def snapshot_index(snapshot: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     entities = snapshot.get("entities")
     if not isinstance(entities, list) or len(entities) > adapter.MAX_LISTED_ENTITIES:
         raise ValueError("snapshot unavailable")
@@ -472,142 +547,90 @@ def _snapshot_index(snapshot: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _feature(metadata: Mapping[str, Any], states: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
-    entity_id = metadata.get("entity_id")
-    if not isinstance(entity_id, str):
-        raise ValueError("entity inventory unavailable")
-    state = states.get(entity_id, {})
-    semantic = metadata.get("semantic_attributes")
-    semantic = semantic if isinstance(semantic, dict) else {}
-    kind = state.get("state_kind", metadata.get("state_kind", "absent"))
-    return {
-        "human_name": metadata.get("friendly_name"),
-        "component": metadata.get("component"),
-        "semantic_role": metadata.get("semantic_role", "state"),
-        "domain": metadata.get("domain", entity_id.split(".", 1)[0]),
-        "measurement_type": {
-            "device_class": semantic.get("device_class"),
-            "unit": semantic.get("unit_of_measurement"),
-        },
-        "state": {
-            "kind": kind,
-            "value": state.get("state_value", metadata.get("state_value")),
-        },
-        "availability": (
-            "unavailable" if kind in {"unavailable", "absent"}
-            else "redacted" if kind == "redacted" else "available"
-        ),
-        "evidence_timestamp": state.get(
-            "source_last_updated_at", metadata.get("source_last_updated_at")
-        ),
-    }
-
-
-def get_model_device_details(
-    snapshot: dict[str, Any], inventory: dict[str, Any], physical_hash: Any
-) -> dict[str, Any]:
-    if not isinstance(physical_hash, str) or re.fullmatch(r"[a-f0-9]{64}", physical_hash) is None:
-        raise ValueError("invalid physical device")
-    device = next(
-        (item for item in _inventory_devices(inventory)
-         if item.get("physical_device_hash") == physical_hash),
-        None,
-    )
-    if device is None:
-        raise ValueError("physical device unavailable")
-    entity_ids = device.get("entity_ids")
-    metadata = {
-        str(item["entity_id"]): item
-        for item in _inventory_entities(inventory)
-        if isinstance(item.get("entity_id"), str)
-    }
-    states = _snapshot_index(snapshot)
-    features = [
-        _feature(metadata[entity_id], states)
-        for entity_id in entity_ids
-        if isinstance(entity_ids, list) and entity_id in metadata
-    ] if isinstance(entity_ids, list) else []
-    available = sum(item["availability"] == "available" for item in features)
-    unavailable = sum(item["availability"] == "unavailable" for item in features)
-    return {
-        "schema_version": 1,
-        "source": "fresh Home Assistant read via inventory identity",
-        "trust_boundary": _trust_boundary(),
-        "display_name": device.get("display_name"),
-        "areas": device.get("area_names", []),
-        "physical_availability": "available" if available else "unavailable",
-        "available_feature_count": available,
-        "unavailable_feature_count": unavailable,
-        "feature_count": len(features),
-        "features": features,
-    }
-
-
-@server.list_tools()
-async def list_tools() -> list[Any]:
-    if types is None:
-        return []
-    return [
-        types.Tool(
-            name="ha_get_index",
-            description="Read the compact physical-device index.",
-            inputSchema=EMPTY_INPUT_SCHEMA,
-        ),
-        types.Tool(
-            name="ha_find_devices",
-            description="Find physical devices by human name, alias, type or area.",
-            inputSchema=FIND_DEVICES_INPUT_SCHEMA,
-        ),
-        types.Tool(
-            name="ha_get_device_details",
-            description="Read fresh current details for one physical device.",
-            inputSchema=DEVICE_INPUT_SCHEMA,
-        ),
+def select_feature_entities(inventory: Mapping[str, Any], target_ref: str, feature: str) -> list[dict[str, Any]]:
+    if feature not in FEATURES:
+        raise ValueError("unknown feature")
+    entities, targets, _areas, _integrations = _indexes(inventory)
+    target = targets.get(target_ref)
+    if target is None:
+        raise ValueError("target unavailable")
+    members = [
+        entities[ref] for ref in target.get("entity_refs", []) if ref in entities
+        and not entities[ref].get("disabled") and not entities[ref].get("hidden")
     ]
+    if feature == "unknown":
+        return []
+    if feature == "consumables":
+        selected = [item for item in members if item.get("component") in {"main_brush", "side_brush", "filter"}]
+    elif feature == "status":
+        selected = [item for item in members if item.get("component") == "status"]
+        if not selected:
+            selected = [item for item in members if item.get("component") in {"power", "mode", "error"}]
+        if not selected and members:
+            selected = [members[0]]
+    else:
+        selected = [item for item in members if item.get("component") == feature]
+    return sorted(selected, key=lambda item: str(item.get("entity_ref")))
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    if name not in {"ha_get_index", "ha_find_devices", "ha_get_device_details"}:
-        return {"schema_version": 1, "configured": True, "status": "api_unavailable"}
-    try:
-        inventory = load_inventory()
-        if name == "ha_get_index":
-            if arguments:
-                raise ValueError("unexpected arguments")
-            return get_model_index(inventory)
-        if name == "ha_find_devices":
-            return find_model_devices(inventory, **arguments)
-        snapshot, exit_code = adapter.execute_safely("snapshot")
-        if exit_code != 0:
-            raise ValueError("snapshot unavailable")
-        return get_model_device_details(
-            snapshot, inventory, arguments.get("physical_device_hash")
-        )
-    except (adapter.AdapterError, TypeError, ValueError):
-        return {"schema_version": 1, "configured": True, "status": "api_unavailable"}
+def target_context(inventory: Mapping[str, Any], target_ref: str) -> dict[str, Any]:
+    entities, targets, areas, integrations = _indexes(inventory)
+    target = targets.get(target_ref)
+    if target is None:
+        raise ValueError("target unavailable")
+    profile = _target_profile(target, entities, areas, integrations)
+    return {
+        "target_ref": target_ref, "kind": profile["kind"],
+        "display_name": profile["display_name"], "areas": list(profile["areas"]),
+    }
 
 
-async def run_server() -> None:
-    if (
-        not MCP_RUNTIME_AVAILABLE or NotificationOptions is None
-        or InitializationOptions is None or stdio_server is None
-    ):
-        raise RuntimeError("MCP runtime dependency is unavailable")
-    capabilities = server.get_capabilities(
-        notification_options=NotificationOptions(), experimental_capabilities={}
-    )
-    initialization = InitializationOptions(
-        server_name="home-assistant-read",
-        server_version="3.0.0",
-        capabilities=capabilities,
-        instructions="Read current Home Assistant facts without service calls.",
-    )
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, initialization)
+def fresh_facts(
+    snapshot: Mapping[str, Any], inventory: Mapping[str, Any], target_ref: str, feature: str,
+) -> list[dict[str, Any]]:
+    states = snapshot_index(snapshot)
+    observed_at = snapshot.get("observed_at")
+    result: list[dict[str, Any]] = []
+    for metadata in select_feature_entities(inventory, target_ref, feature):
+        entity_id = metadata.get("entity_id")
+        result.append({
+            "metadata": metadata,
+            "fresh_state": states.get(entity_id) if isinstance(entity_id, str) else None,
+            "observed_at": observed_at,
+        })
+    return result
 
 
-if __name__ == "__main__":
-    if anyio is None:
-        raise SystemExit("MCP runtime dependency is unavailable")
-    anyio.run(run_server)
+def coverage(inventory: Mapping[str, Any], snapshot: Mapping[str, Any]) -> dict[str, int]:
+    metadata_ids = {item.get("entity_id") for item in _entities(inventory)}
+    current_ids = set(snapshot_index(snapshot))
+    enabled_ids = {
+        item.get("entity_id") for item in _entities(inventory)
+        if not item.get("disabled") and not item.get("hidden")
+    }
+    represented = current_ids & metadata_ids
+    return {
+        "current_entities": len(current_ids), "enabled_current_entities": len(current_ids & enabled_ids),
+        "represented_current_entities": len(represented), "missing_current_entities": len(current_ids - metadata_ids),
+        "physical_nodes": len(inventory.get("physical_nodes", [])),
+        "logical_nodes": len(inventory.get("logical_nodes", [])),
+    }
+
+
+def get_model_index(inventory: dict[str, Any]) -> dict[str, Any]:
+    """Host diagnostics only; it contains counts, never persistent current facts."""
+
+    inventory_builder.validate_inventory_document(inventory)
+    return {
+        "schema_version": 2, "source": "Home Assistant registry metadata only",
+        "entity_count": inventory["entity_count"],
+        "physical_device_count": inventory["physical_device_count"],
+        "logical_entity_count": inventory["logical_entity_count"],
+        "area_count": inventory["area_count"], "integration_count": inventory["integration_count"],
+    }
+
+
+def dump_safe_candidate_set(candidates: Sequence[Mapping[str, Any]]) -> str:
+    """Serialize only the model-safe candidate boundary."""
+
+    return json.dumps(list(candidates), ensure_ascii=False, separators=(",", ":"))

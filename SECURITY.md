@@ -12,8 +12,16 @@ Production работает только на чтение.
 
 Токен HA хранится только в root-owned systemd credential с закрытыми правами.
 Секреты запрещено помещать в Git, Markdown, inventory, ответы или журналы.
-Inventory имеет режим `0600`; стабильная физическая identity представлена
-SHA-256 hash, а технические IDs не показываются владельцу.
+Inventory имеет режим `0600`, содержит только metadata и не хранит state,
+availability, value или timestamps. Физические representation связываются
+только по точному registry device ID, сохранённому как SHA-256 hash; имя,
+модель и комната не являются identity.
+
+Host формирует закрытый `IntentFrame` и кандидатов. Модель видит только
+безопасные labels и turn-local refs (`r1`, `r2`, ...), а вернуть может только
+эти refs или clarification. Entity/device/service/capability IDs от модели
+отклоняются. Ответ о доме строится только после свежего GET и создания
+`ReadReceipt`.
 
 Названия и состояния из HA считаются недоверенными данными. Они проходят
 ограничение длины, символов и secret/prompt-injection фильтр. Недоступные,

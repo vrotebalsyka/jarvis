@@ -1,19 +1,23 @@
 # Jarvis / Home Butler
 
 Локальный русскоязычный помощник для чтения текущих состояний Home Assistant.
-Stage 70 намеренно удалил управление, обучение, recovery, scheduler, reminders,
-долгую память, onboarding и параллельные диалоговые маршруты.
+Stage 71 задаёт закрытый семантический контракт и достоверное read-only чтение.
+Управление, Hermes gateway, optional MCP transport, learning, recovery,
+scheduler, reminders и persistent dialog memory отсутствуют.
 
 ## Единственный путь реплики
 
 `Web или Alice → owner_chat.py → bounded_ha_agent.py →
-home_assistant_inventory.py/home_assistant_mcp.py → home_assistant_read.py → ответ`
+home_assistant_inventory.py/home_assistant_mcp.py → home_assistant_read.py →
+ReadReceipt → ответ`
 
-- `home_assistant_inventory.py` — единственный граф физических устройств;
-- `home_assistant_mcp.py` — единственный resolver и три read-only операции:
-  compact index, поиск устройств, свежие детали;
+- `home_assistant_inventory.py` — единственный metadata-only HomeGraph для
+  физических устройств, logical entities, комнат и integration bindings;
+- `home_assistant_mcp.py` — единственный host-only resolver; MCP transport в
+  production отсутствует;
 - `home_assistant_read.py` — только HTTP GET `/api/` и `/api/states`;
-- `bounded_ha_agent.py` — один grounded renderer и локальная модель без tools;
+- `bounded_ha_agent.py` — закрытые `IntentFrame`/`ReadReceipt`, ephemeral
+  session focus и один grounded renderer; локальная модель работает без tools;
 - Web и Alice вызывают один и тот же `owner_chat`.
 
 Обычная команда управления не исполняется. Помощник сообщает, что управление
@@ -43,7 +47,9 @@ sudo ./scripts/install-home-butler-service.sh --activate
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Live acceptance читает HA, но не меняет его. Последний доочисточный аудит:
+Live acceptance читает HA, но не меняет его. Отчёт Stage 71:
+[`reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md`](reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md).
+Предыдущий аудит:
 [`reports/STAGE-69-LIVE-AUDIT-2026-09-01.md`](reports/STAGE-69-LIVE-AUDIT-2026-09-01.md).
 
 Состав и границы описаны в `ARCHITECTURE.md`, текущая задача — в

@@ -1,5 +1,4 @@
 config/home-assistant.env
-hermes/.env
 logs/*
 secrets/*
 state/*
@@ -7,28 +6,8 @@ state/*
 !state/.gitkeep
 
 # excluded from repo
-hermes-agent/
 runtime-home/
 tmp/
-hermes/bin/
 __pycache__/
 *.pyc
 node_modules/
-
-# Hermes runtime state stays local and must never enter Git.
-hermes/.hermes_history
-hermes/.mcp-discovery.lock
-hermes/.update_check
-hermes/auth.lock
-hermes/cache/
-hermes/context_length_cache.yaml
-hermes/logs/
-hermes/models_dev_cache.json
-hermes/ollama_cloud_models_cache.json
-hermes/skills/.curator_state
-hermes/skills/.hub/
-hermes/skills/.usage.json
-hermes/skills/.usage.json.lock
-hermes/state.db
-hermes/state.db-shm
-hermes/state.db-wal

@@ -1,87 +1,31 @@
-# Current Goal — Stage 70 PURGE
+# Current Goal — Stage 71
 
-Статус: `COMPLETE`. Код, repository gates, production activation и повторная
-live read-only acceptance пройдены. Stage 70 завершён; Stage 71 не начат.
+Статус: `PREDEPLOY_GREEN_AWAITING_OWNER_ACTIVATION`.
 
-## Обязательный отчёт
+Stage 71 реализован и прошёл repository, fixture, oracle и live read-only gates.
+Production остаётся на Stage 70: deployment/activation не выполнялись, потому
+что для них требуется отдельное явное разрешение владельца.
 
-### FILES_DELETED
+Готово:
 
-- 280 tracked files удалено.
-- Удалены learning/control/proof/recovery/scheduler/memory/onboarding,
-  diagnostics/maintenance/stress layers, старые corpora, units и документы.
-- Git history и safety tag `pre-stage70-cleanup-4ebbff4` остаются архивом.
+- safety tag `post-stage70-complete-45972cb` создан и опубликован;
+- baseline tests/import graph/units/model/context/offload/latency/inventory
+  зафиксирован;
+- отсутствие Hermes caller доказано, gateway/unit/runner/optional MCP transport
+  удалены из проекта;
+- один metadata-only HomeGraph schema v5 покрывает physical/logical/area/
+  integration nodes и 215/215 enabled current entities;
+- закрытые IntentFrame, ordered resolver, feature resolver, typed ReadReceipt и
+  ephemeral session focus реализованы;
+- независимый oracle, 587 raw utterances, required fixtures, anti-regressions и
+  frozen 40-row blind live corpus добавлены;
+- full suite 50/50 PASS в Windows и WSL;
+- pre-deploy live: all zero gates, 30 physical/10 logical reads,
+  deterministic P95 0.1230 s, model-assisted P95 1.8762 s,
+  `HA_SERVICE_CALLS=0`.
 
-### FILES_REDUCED
+Следующий и единственный шаг Stage 71: после отдельного разрешения владельца
+выполнить activation и повторить live-read acceptance. Stage 72 не начинать.
 
-- 20 существовавших файлов стали короче.
-- Крупнейшие сокращения: `owner_chat.py`, `bounded_ha_agent.py`,
-  `home_assistant_inventory.py`, `home_assistant_mcp.py`,
-  `home_assistant_read.py`, `alice_skill_gateway.py`,
-  `alice_skill_health.py`, `local_chat_gateway.py`, installer и Hermes config.
-
-### LINES_BEFORE
-
-- Все tracked files: 83 009 строк.
-- Production Python: 74 modules, 43 449 строк.
-- Tests Python: 88 файлов, 23 353 строки.
-
-### LINES_AFTER
-
-- Все tracked files: 6 770 строк.
-- Production Python: 14 modules, 4 603 строки.
-- Tests Python: 7 файлов, 557 строк.
-
-### PRODUCTION_IMPORT_GRAPH_BEFORE
-
-- Web: 43 reachable production modules.
-- Alice: 38 reachable production modules.
-- Union: 43 modules, включая несколько routers, graphs, renderers, action
-  planners, learning, memory, scheduler, recovery и incident layers.
-
-### PRODUCTION_IMPORT_GRAPH_AFTER
-
-```text
-local_chat_gateway ─┐
-                    ├→ owner_chat → bounded_ha_agent
-alice_skill_gateway ┘                    │
-                                         ├→ home_assistant_mcp
-                                         │    └→ home_assistant_inventory
-                                         └→ home_assistant_read
-```
-
-- Web: 9 reachable production modules.
-- Alice: 9 reachable production modules.
-- Union: 10 modules, включая transports и shared sanitizer/policy/endpoint.
-- Один inventory, resolver, fresh-read adapter и grounded renderer.
-
-### TESTS_REMOVED_AS_OBSOLETE
-
-- 90 legacy test artifacts удалено, включая 88 старых Python tests/evaluators.
-- Вместо них оставлено 7 focused Python files для sanitization, identity,
-  inventory, resolver, fresh state, ambiguity, rendering, transports,
-  secret leakage и live acceptance.
-- Полный оставшийся suite: 22/22 PASS в Windows Python и Ubuntu/WSL Python.
-
-### LIVE_READ_ACCEPTANCE
-
-- 19 строк Stage 69, 20 target groups (ванная и туалет отдельно).
-- 30 физических registry identities прочитано через 100 естественных русских
-  фраз на настоящем production path.
-- `wrong_device=0`, `invented_facts=0`, `lost_available_values=0`.
-- `technical_leaks=0`, `ha_service_calls=0`; роботы не запускались.
-- После production activation: 178 HA entities, 50 физических устройств,
-  `model_fallbacks=1`; повторный прогон имеет статус `pass`.
-
-### PRODUCTION_ACTIVATION
-
-- Installer завершился успешно с `--activate`; закрытый набор содержит ровно
-  12 Home Butler systemd units, устаревшие units и backup удалены.
-- Ollama, inventory timer, Web, Alice skill/tunnel, health timer и finalize
-  paths активны; failed units отсутствуют.
-- Health probes `local_gateway`, `local_model`, `ha_read`, `public_gateway`
-  завершились со статусом `healthy`; Web вернул HTTP 200.
-- Inventory свежий, принадлежит `homebutler`, mode `0600`; production scripts
-  синхронизированы с checkout.
-
-После Stage 70 остановиться; Stage 71 не начинать.
+Полный отчёт:
+[`reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md`](reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md).

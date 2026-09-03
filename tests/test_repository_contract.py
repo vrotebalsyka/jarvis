@@ -55,7 +55,18 @@ class RepositoryContractTests(unittest.TestCase):
             "README.md", "AGENTS.md", "SECURITY.md", "SOUL.md", "ARCHITECTURE.md",
             "CURRENT-GOAL.md", "reports/STAGE-69-LIVE-AUDIT-2026-09-01.md",
             "reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md",
+            "reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md",
         })
+
+    def test_stage72_has_planning_but_no_control_surface(self) -> None:
+        action_source = (ROOT / "scripts" / "shadow_action_policy.py").read_text(encoding="utf-8")
+        read_source = (ROOT / "scripts" / "home_assistant_read.py").read_text(encoding="utf-8")
+        self.assertNotIn("http.client", action_source)
+        self.assertNotIn("home_assistant_read", action_source)
+        for marker in ("execute_action", "dispatch_action", "call_service", "/api/services/"):
+            self.assertNotIn(marker, action_source)
+        self.assertIn('connection.request("GET", path', read_source)
+        self.assertNotIn('connection.request("POST"', read_source)
 
 
 if __name__ == "__main__":

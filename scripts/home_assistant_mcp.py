@@ -28,9 +28,14 @@ FEATURES = frozenset({
 })
 TYPE_CONCEPTS: dict[str, frozenset[str]] = {
     "dishwasher": frozenset({"dishwasher", "посудомойка", "посудомоечная"}),
-    "light": frozenset({"light", "свет", "освещение", "лампа", "светильник", "ночник"}),
+    "appliance": frozenset({"appliance", "техника", "посудомойка", "стиральная", "сушилка"}),
+    "light": frozenset({"light", "свет", "освещение", "лампа", "светильник", "ночник", "зеркало"}),
     "vacuum": frozenset({"vacuum", "robot", "робот", "пылесос"}),
     "switch": frozenset({"switch", "реле", "выключатель", "розетка"}),
+    "button": frozenset({"button", "кнопка"}),
+    "lock": frozenset({"lock", "замок", "блокировка"}),
+    "climate": frozenset({"climate", "климат", "термостат", "кондиционер"}),
+    "script": frozenset({"script", "сценарий", "скрипт"}),
     "media_player": frozenset({"media player", "колонка", "станция"}),
     "camera": frozenset({"camera", "камера"}),
     "sensor": frozenset({"sensor", "датчик"}),
@@ -73,6 +78,8 @@ QUERY_STOPWORDS = frozenset({
     "там", "текущий", "текущее", "у", "что", "пожалуйста", "скажи", "устройство",
     "устройства", "свежие", "свежий", "данные", "текущие", "осталось", "остался",
     "осталась", "включи", "выключи", "переключи", "нажми", "запусти", "останови",
+    "включить", "выключить", "зажги", "зажечь", "погаси", "погасить", "вруби",
+    "отключи", "активируй", "деактивируй", "разблокируй", "заблокируй",
     "нет", "не", "лучше", "имел", "виду",
     "home", "assistant", "ha", "нужен", "нужна", "нужно", "только", "прочитай",
     "интересует", "уточни", "догадок", "изменяется", "сообщи", "известно",
@@ -208,6 +215,9 @@ def normalize_device_query(value: Any, feature: str | None = None) -> str:
         token for name in removed_features if name in FEATURE_TERMS
         for term in FEATURE_TERMS[name] for token in _tokens(normalize_text(term))
     }
+    # These words can identify a light ("основной свет") and are feature
+    # modifiers only inside the complete brush phrase.
+    removed_words -= {"основная", "основной", "боковая", "боковой"}
     tokens = [
         token for token in _tokens(normalized)
         if token not in QUERY_STOPWORDS
@@ -430,6 +440,12 @@ def resolve_targets(
         )
         and (_profile_has_type(profile, concepts) if concepts else feature in profile["features"])
     ]
+    area_distinctive = _distinctive_tokens(query, concepts) if concepts else []
+    if len(area_type) > 1 and area_distinctive:
+        scored_area = [(_distinctive_score(area_distinctive, profile), profile) for profile in area_type]
+        top_area = max(score for score, _profile in scored_area)
+        if top_area:
+            area_type = [profile for score, profile in scored_area if score == top_area]
     exact_tiers.append(("exact_area_type", area_type))
     exact_tiers.append(("entity_name_alias", [
         profile for profile in profiles
@@ -529,6 +545,94 @@ def public_candidate(profile: Mapping[str, Any], turn_ref: str) -> dict[str, Any
             if value in FEATURE_PUBLIC_LABELS
         ],
     }
+
+
+def extract_action_scope(inventory: Mapping[str, Any], utterance: str) -> dict[str, Any]:
+    """Extract owner-requested constraints without accepting model claims."""
+
+    full_query = normalize_text(utterance)
+    _entities_by_ref, _targets_by_ref, areas, _integrations = _indexes(inventory)
+    requested_areas: list[str] = []
+    area_tokens: set[str] = set()
+    query_tokens = _tokens(full_query)
+    for area in areas.values():
+        names = [area.get("name"), *area.get("aliases", [])]
+        for name in names:
+            if not isinstance(name, str):
+                continue
+            normalized = normalize_text(name)
+            tokens = _tokens(normalized)
+            matched = _phrase_present(normalized, full_query) or (
+                len(tokens) == 1 and any(_weak_word(token, tokens[0]) for token in query_tokens)
+            )
+            if matched:
+                label = str(area.get("name") or name)
+                if label not in requested_areas:
+                    requested_areas.append(label)
+                area_tokens.update(tokens)
+                break
+    concepts = tuple(sorted(_type_concepts(full_query)))
+    removed_type_tokens = {
+        token for concept in concepts for word in TYPE_CONCEPTS[concept]
+        for token in _tokens(normalize_text(word))
+    }
+    device_query = normalize_device_query(utterance, "power")
+    distinctive = [
+        token for token in _tokens(device_query)
+        if not any(_weak_word(token, removed) for removed in removed_type_tokens | area_tokens)
+    ]
+    return {
+        "requested_areas": tuple(requested_areas),
+        "requested_types": concepts,
+        "requested_name": " ".join(distinctive) or None,
+        "requested_feature": "power",
+    }
+
+
+def action_scope_matches(
+    inventory: Mapping[str, Any], profile: Mapping[str, Any], scope: Mapping[str, Any],
+) -> tuple[bool, str]:
+    """Recheck every explicit owner constraint against the resolved target."""
+
+    entities, _targets_by_ref, areas, integrations = _indexes(inventory)
+    target_ref = profile.get("target_ref")
+    targets = {item["target_ref"]: item for item in _targets(inventory)}
+    target = targets.get(target_ref)
+    if target is None:
+        return False, "target_missing"
+    canonical = _target_profile(target, entities, areas, integrations)
+    candidate_area_names = [*canonical["areas"], *canonical["area_aliases"]]
+    for requested in scope.get("requested_areas", ()):
+        if not isinstance(requested, str) or not any(
+            _weak_word(token, candidate)
+            for token in _tokens(normalize_text(requested))
+            for value in candidate_area_names
+            for candidate in _tokens(normalize_text(value))
+        ):
+            return False, "area_mismatch"
+    requested_types = scope.get("requested_types", ())
+    if not isinstance(requested_types, (list, tuple)):
+        return False, "type_mismatch"
+    for concept in requested_types:
+        if concept not in TYPE_CONCEPTS or not _profile_has_type(canonical, {concept}):
+            return False, "type_mismatch"
+    requested_name = scope.get("requested_name")
+    if requested_name:
+        if not isinstance(requested_name, str):
+            return False, "name_mismatch"
+        values = [
+            *canonical["names"], *canonical["aliases"], *canonical["entity_names"],
+            *canonical["entity_aliases"], *canonical["manufacturer_model"],
+        ]
+        candidate_tokens = [
+            token for value in values for token in _tokens(normalize_text(value))
+        ]
+        if not all(
+            any(_weak_word(token, candidate) for candidate in candidate_tokens)
+            for token in _tokens(normalize_text(requested_name))
+        ):
+            return False, "name_mismatch"
+    return True, "matched"
 
 
 def snapshot_index(snapshot: Mapping[str, Any]) -> dict[str, dict[str, Any]]:

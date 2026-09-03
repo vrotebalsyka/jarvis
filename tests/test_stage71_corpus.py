@@ -16,9 +16,9 @@ import stage71_oracle as oracle
 
 def fake_model(_endpoint: object, _path: str, payload: dict, **_kwargs: object) -> dict:
     schema = payload.get("format", {})
-    decisions = schema.get("properties", {}).get("decision", {}).get("enum", []) if isinstance(schema, dict) else []
-    if decisions:
-        return {"message": {"content": '{"decision":"clarify","refs":[]}'}}
+    choices = schema.get("properties", {}).get("choice", {}).get("enum", []) if isinstance(schema, dict) else []
+    if choices:
+        return {"response": '{"choice":"clarify"}'}
     return {"message": {"content": "Здравствуйте."}}
 
 
@@ -33,7 +33,7 @@ class RawRussianCorpusTests(unittest.TestCase):
             utterance, context or {"session_focus": agent.SessionFocus()}, [],
             inventory_loader=lambda: self.graph,
             snapshot_reader=lambda _command: (self.snapshot, 0),
-            endpoint_loader=lambda: object(), ollama_call=fake_model,
+            endpoint_loader=lambda: object(), ollama_call=fake_model, trace_sink=None,
         )
 
     def test_at_least_five_hundred_raw_utterances_without_frames(self) -> None:
@@ -81,8 +81,10 @@ class RawRussianCorpusTests(unittest.TestCase):
         ambiguous = self.turn("покажи зеркало")
         self.assertEqual(ambiguous.frame.kind, "clarification")
         controlled = self.turn("включи питание посудомойки")
-        self.assertTrue(controlled.answer.startswith("Управление отключено"))
-        self.assertEqual(controlled.receipts[0].value, "off")
+        self.assertEqual(controlled.frame.kind, "action")
+        self.assertIsNone(controlled.action_plan)
+        self.assertIn("запрещена политикой shadow", controlled.answer)
+        self.assertEqual(controlled.receipts, ())
 
     def test_raw_followup_and_correction_sequences(self) -> None:
         for row in stage71_corpus.raw_corpus():

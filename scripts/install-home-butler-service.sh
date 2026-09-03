@@ -33,6 +33,7 @@ readonly -a RUNTIME_SCRIPTS=(
   owner_chat.py
   rotate-alice-webhook.py
   safe_attribute_sanitizer.py
+  shadow_action_policy.py
 )
 readonly -a UNITS=(
   home-butler-local-chat.service

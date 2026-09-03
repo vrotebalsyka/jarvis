@@ -29,7 +29,7 @@ class ReceiptReplayTests(unittest.TestCase):
             question, context or {"session_focus": agent.SessionFocus()}, [],
             inventory_loader=lambda: self.graph,
             snapshot_reader=lambda _command: (snapshot or self.snapshot, 0),
-            ollama_call=no_model,
+            ollama_call=no_model, trace_sink=None,
         )
 
     def test_robot_docked_and_cleaning(self) -> None:
@@ -40,8 +40,9 @@ class ReceiptReplayTests(unittest.TestCase):
 
     def test_dishwasher_off_running_and_conditional_control(self) -> None:
         power = self.turn("включи питание посудомойки")
-        self.assertTrue(power.answer.startswith("Управление отключено; ничего не меняю."))
-        self.assertIn("выключено", power.answer)
+        self.assertEqual(power.frame.kind, "action")
+        self.assertIsNone(power.action_plan)
+        self.assertEqual(power.receipts, ())
         running = self.turn(
             "статус посудомойки",
             snapshot=fixtures.snapshot({"sensor.dishwasher_status": ("enum", "running")}),
@@ -49,8 +50,7 @@ class ReceiptReplayTests(unittest.TestCase):
         self.assertIn("работает", running.answer)
         self.assertEqual(self.snapshot["service_calls"], 0)
         conditional = self.turn("если посудомойка выключена, включи питание")
-        self.assertTrue(conditional.answer.startswith("Управление отключено"))
-        self.assertIn("выключено", conditional.answer)
+        self.assertIsNone(conditional.action_plan)
 
     def test_alternate_integration_does_not_hide_available_power(self) -> None:
         result = self.turn("питание посудомойки")
@@ -185,7 +185,7 @@ class ModelCandidateBoundaryTests(unittest.TestCase):
         captured: list[dict] = []
         def model(_endpoint: object, _path: str, payload: dict, **_kwargs: object) -> dict:
             captured.append(payload)
-            return {"message": {"content": '{"decision":"select","refs":["r2"]}'}}
+            return {"response": '{"choice":"r2"}'}
         selected = agent._choose_candidate("правое зеркало", profiles, endpoint_loader=lambda: object(), ollama_call=model)
         self.assertEqual(selected, (profiles[1]["target_ref"],))
         serialized = json.dumps(captured, ensure_ascii=False)
@@ -195,7 +195,7 @@ class ModelCandidateBoundaryTests(unittest.TestCase):
         with self.assertRaises(agent.BoundedAgentError):
             agent._choose_candidate(
                 "зеркало", profiles, endpoint_loader=lambda: object(),
-                ollama_call=lambda *_a, **_k: {"message": {"content": '{"decision":"select","refs":["sensor.bad"]}'}},
+                ollama_call=lambda *_a, **_k: {"response": '{"choice":"sensor.bad"}'},
             )
         poisoned = dict(profiles[0])
         poisoned["display_name"] = "sensor.secret"

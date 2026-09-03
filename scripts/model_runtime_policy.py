@@ -65,7 +65,7 @@ PROFILES: Mapping[str, RuntimeProfile] = MappingProxyType({
     "voice_fast": _profile("voice_fast", 8_192, 384, 0.15, 60.0),
     "dialogue": _profile("dialogue", 32_768, 1_024, 0.25, 180.0),
     "structured": _profile("structured", 8_192, 1_024, 0.0, 180.0),
-    "selector": _profile("selector", 8_192, 48, 0.0, 10.0),
+    "selector": _profile("selector", 8_192, 16, 0.0, 10.0),
 })
 
 

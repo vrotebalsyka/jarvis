@@ -1,0 +1,40 @@
+{"utterance":"Включи основной свет ванной","outcome":"plan","target":"Основной свет ванной","action":"turn_on"}
+{"utterance":"Погаси основной свет ванной","outcome":"plan","target":"Основной свет ванной","action":"turn_off"}
+{"utterance":"Зажги, пожалуйста, основной свет ванной","outcome":"plan","target":"Основной свет ванной","action":"turn_on"}
+{"utterance":"Включи зеркало ванной","outcome":"plan","target":"Зеркало ванной","action":"turn_on"}
+{"utterance":"Выключи зеркало ванной","outcome":"plan","target":"Зеркало ванной","action":"turn_off"}
+{"utterance":"Пожалуйста зажги зеркало ванной","outcome":"plan","target":"Зеркало ванной","action":"turn_on"}
+{"utterance":"Включи основной свет кабинета","outcome":"plan","target":"Основной свет кабинета","action":"turn_on"}
+{"utterance":"Отключи основной свет кабинета","outcome":"plan","target":"Основной свет кабинета","action":"turn_off"}
+{"utterance":"Вруби сейчас основной свет кабинета","outcome":"plan","target":"Основной свет кабинета","action":"turn_on"}
+{"utterance":"Зажги настольную лампу кабинета","outcome":"plan","target":"Настольная лампа кабинета","action":"turn_on"}
+{"utterance":"Погаси настольную лампу кабинета","outcome":"plan","target":"Настольная лампа кабинета","action":"turn_off"}
+{"utterance":"Активируй настольную лампу кабинета","outcome":"plan","target":"Настольная лампа кабинета","action":"turn_on"}
+{"utterance":"Включи основной свет туалета","outcome":"plan","target":"Основной свет туалета","action":"turn_on"}
+{"utterance":"Выключи основной свет туалета","outcome":"plan","target":"Основной свет туалета","action":"turn_off"}
+{"utterance":"Зажги свет в туалете","outcome":"plan","target":"Основной свет туалета","action":"turn_on"}
+{"utterance":"Включи основной свет кухни","outcome":"plan","target":"Основной свет кухни","action":"turn_on"}
+{"utterance":"Деактивируй основной свет кухни","outcome":"plan","target":"Основной свет кухни","action":"turn_off"}
+{"utterance":"Зажги освещение на кухне","outcome":"plan","target":"Основной свет кухни","action":"turn_on"}
+{"utterance":"Включи ночник коридора","outcome":"plan","target":"Ночник коридора","action":"turn_on"}
+{"utterance":"Погаси ночник коридора","outcome":"plan","target":"Ночник коридора","action":"turn_off"}
+{"utterance":"Зажги ночник в прихожей","outcome":"plan","target":"Ночник коридора","action":"turn_on"}
+{"utterance":"Включи реле вентилятора","outcome":"plan","target":"Реле вентилятора","action":"turn_on"}
+{"utterance":"Отключи реле вентилятора","outcome":"plan","target":"Реле вентилятора","action":"turn_off"}
+{"utterance":"Активируй реле в ванной","outcome":"plan","target":"Реле вентилятора","action":"turn_on"}
+{"utterance":"Включи реле стола","outcome":"plan","target":"Реле стола","action":"turn_on"}
+{"utterance":"Выключи реле стола","outcome":"plan","target":"Реле стола","action":"turn_off"}
+{"utterance":"Активируй реле в кабинете","outcome":"plan","target":"Реле стола","action":"turn_on"}
+{"utterance":"Включи основной свет входной зоны","outcome":"plan","target":"Основной свет входной зоны","action":"turn_on"}
+{"utterance":"Погаси основной свет входной зоны","outcome":"plan","target":"Основной свет входной зоны","action":"turn_off"}
+{"utterance":"Зажги основной свет входной зоны","outcome":"plan","target":"Основной свет входной зоны","action":"turn_on"}
+{"utterance":"Включи зеркало","outcome":"safe_no_plan"}
+{"utterance":"Выключи основной свет","outcome":"safe_no_plan"}
+{"utterance":"Включи свет ванной в кабинете","outcome":"safe_no_plan"}
+{"utterance":"Включи свет туалета в прихожей","outcome":"safe_no_plan"}
+{"utterance":"Включи свет кухни в коридоре","outcome":"safe_no_plan"}
+{"utterance":"Включи зеркало ванной и основной свет кабинета","outcome":"safe_no_plan"}
+{"utterance":"Запусти Андрея","outcome":"safe_no_plan"}
+{"utterance":"Запусти Roborock S5 Max","outcome":"safe_no_plan"}
+{"utterance":"Включи вытяжку","outcome":"safe_no_plan"}
+{"utterance":"Включи посудомойку","outcome":"safe_no_plan"}

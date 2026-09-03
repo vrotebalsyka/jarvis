@@ -47,7 +47,7 @@ NUMBER_STATE_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
 SENSITIVE_TEXT_RE = re.compile(
     r"(?:https?://|\bbearer\b|\btoken\b|\bsecret\b|\bpassword\b|"
     r"ignore\s+(?:all\s+)?previous|system\s+prompt|"
-    r"игнорир\S*\s+инструкц\S*|системн\S*\s+промпт\S*|"
+    r"игнорир\S*\s+(?:все\s+)?инструкц\S*|системн\S*\s+промпт\S*|"
     r"\bтокен\S*\b|\bсекрет\S*\b|\bпарол\S*\b)",
     re.IGNORECASE,
 )

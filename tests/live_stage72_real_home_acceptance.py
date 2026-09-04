@@ -253,6 +253,8 @@ def run(manifest_path: Path, inventory_path: Path) -> dict[str, Any]:
                 "selected_human_target": selected_target,
                 "selected_area": selected_area, "selected_domain": selected_domain,
                 "selected_action": selected_action, "latency_s": round(duration, 4),
+                "requested_areas": [] if result is None or result.frame.scope is None else list(result.frame.scope.requested_areas),
+                "requested_types": [] if result is None or result.frame.scope is None else list(result.frame.scope.requested_types),
                 "pass": case_pass, "error": error,
             })
     finally:

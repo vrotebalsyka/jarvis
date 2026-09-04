@@ -1,6 +1,6 @@
 # Current Goal — Stage 72
 
-Статус: `STAGE72_CORRECTION_GREEN_NOT_DEPLOYED`.
+Статус: `STAGE72_CAPABILITY_CLOSEOUT_GREEN_NOT_DEPLOYED`.
 
 Stage 72 реализован только как shadow action planning. Реальные HA service
 calls запрещены и не выполнялись; production services не перезапускались и
@@ -27,7 +27,12 @@ calls запрещены и не выполнялись; production services н�
 - новый blind natural-language corpus 100/100, 6 model calls,
   71 deterministic и 5 model-assisted resolutions, P50/P95/P99
   0.0068/2.1278/2.4946 s, все gates 0;
-- repository suite 68/68 PASS в Windows и WSL.
+- repository suite 71/71 PASS в Windows.
+- independent real-home room/type closeout 42/42: 10 real actionable targets,
+  30 expected plans, `REAL_ROOM_TYPE_PLANS=21`, 12 safe clarifications,
+  P50/P95/P99 1.4715/1.6093/1.6390 s и все safety/network gates 0;
+- action resolution использует turn-local light/switch entity projection
+  внутри единственного HomeGraph; exact physical ambiguity сохраняется.
 
 Evidence report:
 [`reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md`](reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md).
@@ -36,3 +41,5 @@ Evidence report:
 [`reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md`](reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md).
 Correction evidence:
 [`reports/STAGE-72-CORRECTION-2026-09-04.md`](reports/STAGE-72-CORRECTION-2026-09-04.md).
+Room/type closeout evidence:
+[`reports/STAGE-72-ROOM-TYPE-CLOSEOUT-2026-09-04.md`](reports/STAGE-72-ROOM-TYPE-CLOSEOUT-2026-09-04.md).

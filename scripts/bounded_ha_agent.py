@@ -870,6 +870,7 @@ def _shadow_action_result(
             action_plan=None, trace_json=trace,
         )
 
+    prepared_action_profiles = resolver.prepare_action_profiles(inventory)
     scope_query = _scope_query(scope)
     weak_owner_verified = False
     if not scope_query and DEICTIC_TARGET_RE.search(question) and focus.last_target_refs:
@@ -879,10 +880,42 @@ def _shadow_action_result(
             candidates,
         )
     else:
-        raw_resolution = resolver.resolve_targets(
+        target_resolution = resolver.resolve_targets(
             inventory, question, "power", preserve_feature_words=True,
         )
-        if (
+        action_resolution = resolver.resolve_action_targets(
+            inventory, question, preserve_feature_words=True,
+            prepared_profiles=prepared_action_profiles,
+        )
+        target_hard_deny = False
+        if len(target_resolution.candidates) == 1:
+            target_candidate = target_resolution.candidates[0]
+            action_parents = {
+                candidate.get("parent_target_ref")
+                for candidate in action_resolution.candidates
+            }
+            target_hard_deny = (
+                action_policy.ACTION_POLICY_REGISTRY.evaluate(
+                    frame.action, target_candidate,
+                ).decision == "hard_deny"
+                and (
+                    target_resolution.tier in {"exact_alias", "exact_name", "entity_name_alias"}
+                    or not action_resolution.candidates
+                    or action_parents == {target_candidate.get("target_ref")}
+                )
+            )
+        target_exact = (
+            target_resolution.tier in {"exact_alias", "exact_name"}
+            and bool(target_resolution.candidates)
+        )
+        raw_resolution = (
+            target_resolution if target_exact or target_hard_deny else action_resolution
+        )
+        if not raw_resolution.candidates:
+            raw_resolution = target_resolution
+        if target_hard_deny:
+            resolution = target_resolution
+        elif (
             raw_resolution.tier in {"exact_alias", "exact_name", "entity_name_alias"}
             and raw_resolution.candidates
         ):
@@ -897,7 +930,13 @@ def _shadow_action_result(
             resolution = raw_resolution
             weak_owner_verified = True
         else:
-            resolution = resolver.resolve_targets(inventory, scope_query or question, "power")
+            action_resolution = resolver.resolve_action_targets(
+                inventory, scope_query or question,
+                prepared_profiles=prepared_action_profiles,
+            )
+            resolution = action_resolution if action_resolution.candidates else resolver.resolve_targets(
+                inventory, scope_query or question, "power",
+            )
     candidates = resolution.candidates
     evidence = _resolution_evidence(
         resolution, scope, weak_owner_verified=weak_owner_verified,
@@ -958,6 +997,7 @@ def _shadow_action_result(
             "requested_name": verification_scope.requested_name,
             "requested_feature": verification_scope.requested_feature,
         },
+        prepared_profiles=prepared_action_profiles,
     )
     if not matches:
         decision = action_policy.PolicyDecision("hard_deny", mismatch_reason)

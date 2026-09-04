@@ -21,6 +21,7 @@ _HARD_DENY_DOMAINS = frozenset({
     "alarm_control_panel", "button", "climate", "cover", "fan", "humidifier",
     "lock", "media_player", "script", "vacuum",
 })
+_PARENT_HARD_DENY_DOMAINS = _HARD_DENY_DOMAINS - {"button", "script"}
 _APPLIANCE_MARKERS = (
     "dishwasher", "washer", "dryer", "oven", "kettle", "coffee", "посудомо",
     "стираль", "сушиль", "духов", "чайник", "кофевар", "кофемаш",
@@ -91,7 +92,14 @@ class ActionPolicyRegistry:
             value for value in profile.get("domains", ())
             if isinstance(value, str)
         }
-        denied = sorted(domains & _HARD_DENY_DOMAINS)
+        safety_domains = {
+            value for value in profile.get("safety_domains", domains)
+            if isinstance(value, str)
+        }
+        denied = sorted(
+            (domains & _HARD_DENY_DOMAINS)
+            | (safety_domains & _PARENT_HARD_DENY_DOMAINS)
+        )
         if denied:
             return PolicyDecision("hard_deny", "dangerous_domain", denied[0])
         if any(marker in self._text(profile) for marker in _APPLIANCE_MARKERS):

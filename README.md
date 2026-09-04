@@ -59,6 +59,9 @@ gates зелёные):
 Stage 72 correction: real-home 60/60 и новый natural-language corpus 100/100,
 без HA POST и deployment:
 [`reports/STAGE-72-CORRECTION-2026-09-04.md`](reports/STAGE-72-CORRECTION-2026-09-04.md).
+Stage 72 room/type capability closeout: 42/42, 10 real targets,
+`REAL_ROOM_TYPE_PLANS=21`, HA POST/service calls 0:
+[`reports/STAGE-72-ROOM-TYPE-CLOSEOUT-2026-09-04.md`](reports/STAGE-72-ROOM-TYPE-CLOSEOUT-2026-09-04.md).
 Отчёт Stage 71:
 [`reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md`](reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md).
 Предыдущий аудит:

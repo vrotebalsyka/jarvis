@@ -73,6 +73,13 @@ Planning не вызывает fresh-state adapter. Единственная HA 
 закрытую сигнатуру без method и сама отправляет только GET к двум allowlisted
 paths; instrumented acceptance дополнительно блокирует любой HA non-GET.
 
+Для action resolver строит turn-local проекцию только enabled `light`/`switch`
+entities из того же HomeGraph. Parent physical identity не меняется и не
+сливается с другими representations. Exact physical name/alias проверяется
+раньше entity projection, поэтому physical tie остаётся clarification. Area без
+registry binding выводится только из human metadata при ровно одном room
+concept; multi-room metadata не превращается в strong evidence.
+
 ## Проверка
 
 Stage 71 independent oracle продолжает защищать read path. Stage 72 corpus

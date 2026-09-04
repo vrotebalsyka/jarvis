@@ -43,6 +43,19 @@ TYPE_CONCEPTS: dict[str, frozenset[str]] = {
     "fan": frozenset({"fan", "вентилятор", "вытяжка"}),
     "humidifier": frozenset({"humidifier", "увлажнитель", "мойка воздуха"}),
 }
+GENERIC_ROOM_NAMES: dict[str, frozenset[str]] = {
+    "Ванная": frozenset({"ванная", "ванной", "ванную"}),
+    "Прихожая": frozenset({"прихожая", "прихожей", "прихожую", "прихожка"}),
+    "Коридор": frozenset({"коридор", "коридоре", "коридора"}),
+    "Туалет": frozenset({"туалет", "туалете", "туалета"}),
+    "Кухня": frozenset({"кухня", "кухне", "кухню"}),
+    "Кабинет": frozenset({"кабинет", "кабинете", "кабинета"}),
+    "Гардероб": frozenset({"гардероб", "гардеробе", "гардероба"}),
+    "Гостиная": frozenset({"гостиная", "гостиной", "гостиную"}),
+    "Спальня": frozenset({"спальня", "спальне", "спальню"}),
+    "Балкон": frozenset({"балкон", "балконе", "балкона"}),
+    "Сад": frozenset({"сад", "саду", "сада"}),
+}
 FEATURE_TERMS: dict[str, tuple[str, ...]] = {
     "main_brush": ("основная щетка", "основной щетки", "основной щётки", "main brush"),
     "side_brush": ("боковая щетка", "боковой щетки", "боковой щётки", "side brush"),
@@ -338,6 +351,8 @@ def _target_profile(
         str(value) for ref in target.get("area_refs", []) if ref in areas
         for value in areas[ref].get("aliases", []) if isinstance(value, str)
     ]
+    if not area_names:
+        area_names = _semantic_areas([*names, *aliases, *entity_names, *entity_aliases], areas)
     domains = {str(item.get("domain")) for item in enabled if isinstance(item.get("domain"), str)}
     classes = {str(item.get("device_class")) for item in enabled if isinstance(item.get("device_class"), str)}
     platforms = {
@@ -357,6 +372,116 @@ def _target_profile(
         ],
         "features": features, "enabled_members": enabled,
     }
+
+
+def _room_catalog(areas: Mapping[str, Mapping[str, Any]]) -> list[tuple[str, tuple[str, ...]]]:
+    """Return registry areas plus a small generic room ontology, never device rules."""
+
+    result: dict[str, tuple[str, list[str]]] = {}
+    for area in areas.values():
+        name = area.get("name")
+        if not isinstance(name, str):
+            continue
+        normalized = normalize_text(name)
+        aliases = [
+            value for value in area.get("aliases", []) if isinstance(value, str)
+        ]
+        result[normalized] = (name, [name, *aliases])
+    for canonical, variants in GENERIC_ROOM_NAMES.items():
+        normalized = normalize_text(canonical)
+        if normalized in result:
+            label, values = result[normalized]
+            values.extend(variants)
+        else:
+            result[normalized] = (canonical, list(variants))
+    return [
+        (label, tuple(dict.fromkeys(values)))
+        for label, values in result.values()
+    ]
+
+
+def _semantic_areas(
+    values: Sequence[str], areas: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Infer an area only when human metadata names exactly one room concept."""
+
+    haystacks = [normalize_text(value) for value in values if value]
+    matches: list[str] = []
+    for label, variants in _room_catalog(areas):
+        if any(
+            _phrase_present(variant, text) or _weak_phrase_present(variant, text)
+            for variant in variants for text in haystacks
+        ):
+            if label not in matches:
+                matches.append(label)
+    return matches if len(matches) == 1 else []
+
+
+def _action_entity_profiles(
+    targets: Mapping[str, Mapping[str, Any]],
+    entities: Mapping[str, Mapping[str, Any]],
+    areas: Mapping[str, Mapping[str, Any]],
+    integrations: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project actionable entity candidates from the one persistent HomeGraph."""
+
+    profiles: list[dict[str, Any]] = []
+    for target in targets.values():
+        parent = _target_profile(target, entities, areas, integrations)
+        for entity in parent["enabled_members"]:
+            entity_ref = entity.get("entity_ref")
+            domain = entity.get("domain")
+            if (
+                not isinstance(entity_ref, str) or not isinstance(domain, str)
+                or domain not in {"light", "switch"}
+            ):
+                continue
+            names = [
+                str(value) for key in ("name", "friendly_name", "display_name", "original_name")
+                for value in [entity.get(key)] if isinstance(value, str)
+            ]
+            aliases = [
+                str(value) for value in entity.get("aliases", []) if isinstance(value, str)
+            ]
+            explicit_areas = list(parent["areas"])
+            if not explicit_areas:
+                explicit_areas = _semantic_areas(
+                    [*names, *aliases, *parent["names"], *parent["aliases"]], areas,
+                )
+            parent_label = str(parent["display_name"])
+            display_name = (
+                parent_label if any(
+                    normalize_text(value) == normalize_text(parent_label) for value in names
+                ) else next((
+                    str(entity.get(key)) for key in ("name", "friendly_name", "display_name", "original_name")
+                    if isinstance(entity.get(key), str)
+                ), parent_label)
+            )
+            profiles.append({
+                "target_ref": entity_ref,
+                "parent_target_ref": parent["target_ref"],
+                "entity_ref": entity_ref,
+                "kind": parent["kind"],
+                "display_name": display_name,
+                "names": names,
+                "aliases": aliases,
+                "entity_names": list(parent["names"]),
+                "entity_aliases": list(parent["aliases"]),
+                "areas": explicit_areas,
+                "area_aliases": list(parent["area_aliases"]),
+                "domains": {domain},
+                "safety_domains": set(parent["domains"]),
+                "device_classes": {
+                    str(entity["device_class"])
+                } if isinstance(entity.get("device_class"), str) else set(),
+                "platforms": set(parent["platforms"]),
+                "manufacturer_model": list(parent["manufacturer_model"]),
+                "features": {
+                    str(entity["component"])
+                } if entity.get("component") in FEATURES else set(),
+                "enabled_members": [entity],
+            })
+    return profiles
 
 
 def _type_concepts(query: str) -> set[str]:
@@ -448,10 +573,30 @@ def _distinctive_score(tokens: Sequence[str], profile: Mapping[str, Any]) -> int
     return sum(max((_word_quality(token, candidate) for candidate in candidate_tokens), default=0) for token in tokens)
 
 
+def _type_name_score(query: str, profile: Mapping[str, Any], concepts: set[str]) -> int:
+    """Prefer the exact requested subtype (light/lamp/relay) inside one area."""
+
+    values = [*profile["names"], *profile["aliases"]]
+    score = 0
+    for concept in concepts:
+        for word in TYPE_CONCEPTS[concept]:
+            if not (_phrase_present(word, query) or _weak_phrase_present(word, query)):
+                continue
+            for value in values:
+                normalized = normalize_text(value)
+                if _phrase_present(word, normalized):
+                    score = max(score, 2)
+                elif _weak_phrase_present(word, normalized):
+                    score = max(score, 1)
+    return score
+
+
 def resolve_targets(
     inventory: dict[str, Any], utterance: str, feature: str,
     *, allowed_target_refs: Sequence[str] | None = None,
     preserve_feature_words: bool = False,
+    action_entities: bool = False,
+    prepared_action_profiles: Sequence[Mapping[str, Any]] | None = None,
 ) -> Resolution:
     if feature not in FEATURES:
         raise ValueError("unknown feature")
@@ -462,11 +607,20 @@ def resolve_targets(
     )
     entities, targets, areas, integrations = _indexes(inventory)
     allowed = set(allowed_target_refs) if allowed_target_refs is not None else None
-    profiles = [
-        _target_profile(target, entities, areas, integrations)
-        for ref, target in targets.items()
-        if (allowed is None or ref in allowed)
-    ]
+    if action_entities:
+        profiles = (
+            [dict(profile) for profile in prepared_action_profiles]
+            if prepared_action_profiles is not None
+            else _action_entity_profiles(targets, entities, areas, integrations)
+        )
+        if allowed is not None:
+            profiles = [profile for profile in profiles if profile["target_ref"] in allowed]
+    else:
+        profiles = [
+            _target_profile(target, entities, areas, integrations)
+            for ref, target in targets.items()
+            if (allowed is None or ref in allowed)
+        ]
     profiles = [profile for profile in profiles if profile["enabled_members"]]
     exact_tiers: list[tuple[str, list[dict[str, Any]]]] = []
     exact_normalizer = normalize_action_target_query if preserve_feature_words else normalize_text
@@ -474,14 +628,21 @@ def resolve_targets(
     exact_tiers.append(("exact_alias", [profile for profile in profiles if exact(profile["aliases"])]))
     exact_tiers.append(("exact_name", [profile for profile in profiles if exact(profile["names"])]))
     concepts = _type_concepts(query)
+    if action_entities and not concepts:
+        concepts = _weak_type_concepts(query)
     area_type = [
         profile for profile in profiles
         if any(
-            _phrase_present(value, query)
+            _phrase_present(value, query) or _weak_phrase_present(value, query)
             for value in [*profile["areas"], *profile["area_aliases"]] if value
         )
         and (_profile_has_type(profile, concepts) if concepts else feature in profile["features"])
     ]
+    if len(area_type) > 1 and concepts:
+        type_scored = [(_type_name_score(query, profile, concepts), profile) for profile in area_type]
+        top_type = max(score for score, _profile in type_scored)
+        if top_type:
+            area_type = [profile for score, profile in type_scored if score == top_type]
     area_distinctive = _distinctive_tokens(query, concepts) if concepts else []
     if len(area_type) > 1 and area_distinctive:
         scored_area = [(_distinctive_score(area_distinctive, profile), profile) for profile in area_type]
@@ -567,6 +728,28 @@ def resolve_targets(
     return Resolution("none", (), ())
 
 
+def resolve_action_targets(
+    inventory: dict[str, Any], utterance: str,
+    *, allowed_target_refs: Sequence[str] | None = None,
+    preserve_feature_words: bool = False,
+    prepared_profiles: Sequence[Mapping[str, Any]] | None = None,
+) -> Resolution:
+    """Resolve actionable entity candidates without creating another graph."""
+
+    return resolve_targets(
+        inventory, utterance, "power", allowed_target_refs=allowed_target_refs,
+        preserve_feature_words=preserve_feature_words, action_entities=True,
+        prepared_action_profiles=prepared_profiles,
+    )
+
+
+def prepare_action_profiles(inventory: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    """Build one immutable-per-turn action projection from the persistent graph."""
+
+    entities, targets, areas, integrations = _indexes(inventory)
+    return tuple(_action_entity_profiles(targets, entities, areas, integrations))
+
+
 def profiles_for_target_refs(
     inventory: Mapping[str, Any], target_refs: Sequence[str],
 ) -> tuple[dict[str, Any], ...]:
@@ -574,11 +757,18 @@ def profiles_for_target_refs(
 
     entities, targets, areas, integrations = _indexes(inventory)
     profiles: list[dict[str, Any]] = []
+    action_profiles = {
+        str(profile["target_ref"]): profile
+        for profile in _action_entity_profiles(targets, entities, areas, integrations)
+    }
     for target_ref in dict.fromkeys(target_refs):
         target = targets.get(target_ref)
-        if target is None:
+        profile = (
+            _target_profile(target, entities, areas, integrations)
+            if target is not None else action_profiles.get(target_ref)
+        )
+        if profile is None:
             continue
-        profile = _target_profile(target, entities, areas, integrations)
         if profile["enabled_members"]:
             profiles.append(profile)
     return tuple(profiles)
@@ -641,10 +831,13 @@ def weak_action_evidence_matches(
     if not single_token_ok:
         return False
     entities, targets, areas, integrations = _indexes(inventory)
-    profiles = [
-        _target_profile(target, entities, areas, integrations)
-        for target in targets.values()
-    ]
+    profiles = (
+        _action_entity_profiles(targets, entities, areas, integrations)
+        if profile.get("entity_ref") else [
+            _target_profile(target, entities, areas, integrations)
+            for target in targets.values()
+        ]
+    )
     selected_score = _weak_score(normalize_action_target_query(utterance), profile)
     competing = [
         _weak_score(normalize_action_target_query(utterance), candidate)
@@ -684,8 +877,7 @@ def extract_action_scope(inventory: Mapping[str, Any], utterance: str) -> dict[s
     requested_areas: list[str] = []
     area_tokens: set[str] = set()
     query_tokens = _tokens(full_query)
-    for area in areas.values():
-        names = [area.get("name"), *area.get("aliases", [])]
+    for area_label, names in _room_catalog(areas):
         for name in names:
             if not isinstance(name, str):
                 continue
@@ -693,7 +885,7 @@ def extract_action_scope(inventory: Mapping[str, Any], utterance: str) -> dict[s
             tokens = _tokens(normalized)
             matched = _phrase_present(normalized, full_query) or _weak_phrase_present(normalized, full_query)
             if matched:
-                label = str(area.get("name") or name)
+                label = area_label
                 if label not in requested_areas:
                     requested_areas.append(label)
                 area_tokens.update(tokens)
@@ -723,6 +915,7 @@ def extract_action_scope(inventory: Mapping[str, Any], utterance: str) -> dict[s
 
 def action_scope_matches(
     inventory: Mapping[str, Any], profile: Mapping[str, Any], scope: Mapping[str, Any],
+    *, prepared_profiles: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[bool, str]:
     """Recheck every explicit owner constraint against the resolved target."""
 
@@ -730,9 +923,19 @@ def action_scope_matches(
     target_ref = profile.get("target_ref")
     targets = {item["target_ref"]: item for item in _targets(inventory)}
     target = targets.get(target_ref)
-    if target is None:
-        return False, "target_missing"
-    canonical = _target_profile(target, entities, areas, integrations)
+    if target is not None:
+        canonical = _target_profile(target, entities, areas, integrations)
+    else:
+        canonical = next((
+            item for item in (
+                prepared_profiles
+                if prepared_profiles is not None
+                else _action_entity_profiles(targets, entities, areas, integrations)
+            )
+            if item["target_ref"] == target_ref
+        ), None)
+        if canonical is None:
+            return False, "target_missing"
     candidate_area_names = [*canonical["areas"], *canonical["area_aliases"]]
     for requested in scope.get("requested_areas", ()):
         if not isinstance(requested, str) or not any(

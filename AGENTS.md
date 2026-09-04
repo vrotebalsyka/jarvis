@@ -27,6 +27,12 @@ shadow-планы для безопасных команд. Production стро�
   TTL. Persistent dialog memory запрещена.
 - Action planning допускается только в существующем path, через единственный
   `ActionPolicyRegistry`: light/switch turn_on/turn_off и только mode=shadow.
+- Action candidates могут быть turn-local entity-проекцией внутри того же
+  HomeGraph: parent physical identity сохраняется, exact physical ambiguity не
+  скрывается, второй граф не создаётся.
+- Комнату без registry binding разрешено выводить только из human metadata и
+  общей room-онтологии при единственном совпадении; multi-room evidence всегда
+  остаётся неоднозначным.
 - Не добавлять action execution, HA POST/service calls, vacuum/button/appliance/
   lock/climate/script plans, recovery, scheduler, reminders, learning,
   onboarding, diagnostics automation или persistent memory.

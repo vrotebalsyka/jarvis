@@ -17,8 +17,12 @@ shadow-планы для безопасных команд. Production стро�
 - Единственный resolver — `home_assistant_mcp.py`.
 - Persistent HomeGraph содержит только metadata для physical, logical, area и
   integration nodes; current state в нём запрещён.
-- Host строит candidates. Модель может вернуть только turn-local opaque ref или
-  clarification; технические и capability IDs запрещены.
+- Host единолично принимает target по strong/ambiguous/weak evidence. Модель
+  не видит candidates и может вернуть только закрытые поля IntentFrame;
+  технические, entity/device/service/capability IDs запрещены.
+- Strong unique exact name/alias/entity-name или area+type принимается host без
+  модели. Ambiguous всегда clarification. Weak/fuzzy принимается только после
+  повторной host-проверки owner evidence; иначе clarification.
 - Session focus только ephemeral: last target/feature, pending clarification и
   TTL. Persistent dialog memory запрещена.
 - Action planning допускается только в существующем path, через единственный

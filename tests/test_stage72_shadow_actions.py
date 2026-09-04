@@ -111,6 +111,48 @@ class Stage72ShadowActionTests(unittest.TestCase):
             self.assertEqual(json.loads(result.trace_json or "null")["policy"]["reason"], "equal_candidates")
         self.assertEqual(model.calls, 0)
 
+    def test_strong_unique_host_evidence_bypasses_model(self) -> None:
+        model = SelectingModel('{"a":"none","n":null,"r":null,"t":null}')
+        result = self.turn("отключи Реле вентилятора", model)
+        self.assertIsNotNone(result.action_plan)
+        self.assertEqual(result.action_plan.target_label, "Реле вентилятора")
+        self.assertEqual(model.calls, 0)
+        trace = json.loads(result.trace_json or "null")
+        self.assertEqual(trace["target_decision"]["evidence"], "strong")
+        self.assertEqual(trace["intent"]["parser"], "deterministic")
+
+    def test_bounded_model_fallback_parses_fields_but_host_resolves(self) -> None:
+        model = SelectingModel(
+            '{"a":"on","n":null,"r":"туалет","t":"light"}'
+        )
+        result = self.turn("хотелось бы света в туалете", model)
+        self.assertIsNotNone(result.action_plan)
+        self.assertEqual(result.action_plan.target_label, "Основной свет туалета")
+        self.assertEqual(model.calls, 1)
+        self.assertIsNone(TECHNICAL.search(json.dumps(model.payloads, ensure_ascii=False)))
+        trace = json.loads(result.trace_json or "null")
+        self.assertEqual(trace["intent"]["parser"], "model")
+        self.assertEqual(trace["target_decision"]["evidence"], "strong")
+
+    def test_action_follow_up_uses_only_ephemeral_session_focus(self) -> None:
+        context = {"session_focus": agent.SessionFocus()}
+        first = agent.process_turn(
+            "включи Основной свет туалета", context, [],
+            inventory_loader=lambda: self.graph,
+            snapshot_reader=lambda _command: (_ for _ in ()).throw(AssertionError("HA read")),
+            endpoint_loader=lambda: object(), ollama_call=SelectingModel(), trace_sink=None,
+        )
+        second = agent.process_turn(
+            "а теперь выключи его", context, [],
+            inventory_loader=lambda: self.graph,
+            snapshot_reader=lambda _command: (_ for _ in ()).throw(AssertionError("HA read")),
+            endpoint_loader=lambda: object(), ollama_call=SelectingModel(), trace_sink=None,
+        )
+        self.assertEqual(first.action_plan.target_label, "Основной свет туалета")
+        self.assertEqual(second.action_plan.target_label, "Основной свет туалета")
+        self.assertEqual(second.action_plan.action, "turn_off")
+        self.assertEqual(json.loads(second.trace_json or "null")["target_decision"]["resolution_tier"], "session_focus")
+
     def test_owner_blind_corpus_is_one_hundred_percent(self) -> None:
         path = ROOT / "tests" / "data" / "stage72_blind_owner.jsonl"
         rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
@@ -176,9 +218,9 @@ class Stage72ShadowActionTests(unittest.TestCase):
         self.assertFalse(any(name.startswith(("execute", "dispatch", "call_service")) for name in dir(policy)))
 
     def test_model_output_cannot_smuggle_technical_ids(self) -> None:
-        model = SelectingModel('{"choice":"light.kitchen"}')
+        model = SelectingModel('{"a":"on","n":"light.kitchen","r":null,"t":"light"}')
         with self.assertRaises(agent.BoundedAgentError):
-            self.turn("включи Основной свет кухни", model)
+            self.turn("хотелось бы света на кухне", model)
 
     def test_one_registry_and_no_ha_network_dependency(self) -> None:
         source = (ROOT / "scripts" / "shadow_action_policy.py").read_text(encoding="utf-8")

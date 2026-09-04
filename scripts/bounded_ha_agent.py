@@ -43,22 +43,60 @@ SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 CONTROL_WORD_RE = re.compile(
-    r"\b(?:включи|выключи|включай|выключай|зажги|погаси|вруби|отключи|активируй|деактивируй|"
-    r"переключи|нажми|запусти|останови|верни|установи|заблокируй|разблокируй|"
-    r"открой|закрой|поставь|выбери|задай|turn\s+on|turn\s+off|toggle|press|"
+    r"\b(?:включи|включите|включай|включить|включать|выключи|выключите|выключай|выключить|выключать|"
+    r"зажги|зажгите|зажечь|погаси|погасите|погасить|вруби|отключи|отключите|отключить|активируй|активировать|"
+    r"деактивируй|деактивировать|переключи|переключить|нажми|нажать|запусти|запустить|останови|"
+    r"остановить|верни|установи|установить|заблокируй|заблокировать|разблокируй|разблокировать|"
+    r"открой|открыть|закрой|закрыть|поставь|поставить|выбери|выбрать|задай|задать|"
+    r"turn\s+on|turn\s+off|toggle|press|"
     r"start|stop|set|lock|unlock)\b",
     re.IGNORECASE,
 )
-TURN_ON_RE = re.compile(r"\b(?:включи|зажги|вруби|активируй|turn\s+on)\b", re.IGNORECASE)
-TURN_OFF_RE = re.compile(r"\b(?:выключи|погаси|отключи|деактивируй|turn\s+off)\b", re.IGNORECASE)
+TURN_ON_RE = re.compile(
+    r"\b(?:включи|включите|включай|включить|включать|зажги|зажгите|зажечь|вруби|активируй|активировать|turn\s+on)\b",
+    re.IGNORECASE,
+)
+TURN_OFF_RE = re.compile(
+    r"\b(?:выключи|выключите|выключай|выключить|выключать|погаси|погасите|погасить|"
+    r"отключи|отключите|отключить|деактивируй|деактивировать|turn\s+off)\b",
+    re.IGNORECASE,
+)
 UNSUPPORTED_ACTION_RE = re.compile(
-    r"\b(?:переключи|нажми|запусти|останови|установи|поставь|задай|выбери|"
-    r"заблокируй|разблокируй|открой|закрой|toggle|press|start|stop|set|lock|unlock)\b",
+    r"\b(?:переключи|переключить|нажми|нажать|запусти|запустить|останови|остановить|"
+    r"установи|установить|поставь|поставить|задай|задать|выбери|выбрать|"
+    r"заблокируй|заблокировать|разблокируй|разблокировать|открой|открыть|закрой|закрыть|"
+    r"toggle|press|start|stop|set|lock|unlock)\b",
     re.IGNORECASE,
 )
 NEGATED_ACTION_RE = re.compile(
-    r"\bне\s+(?:включай|выключай|включи|выключи|зажигай|гаси)\b", re.IGNORECASE,
+    r"\b(?:не\s+(?:надо\s+|нужно\s+|стоит\s+)?|не\s+хочу\s+)(?:включать|выключать|включай|"
+    r"выключай|включи|выключи|зажигать|зажигай|гасить|гаси)\b",
+    re.IGNORECASE,
 )
+ACTION_FALLBACK_CUE_RE = re.compile(
+    r"\b(?:сделай|сделайте|пусть|хочу|хотелось|нужно|надо|можешь|можете|прошу|"
+    r"темно|светло|светил|светилась|горел|горела|убери|уберите|оставь|оставьте)\b",
+    re.IGNORECASE,
+)
+NATURAL_OFF_RE = re.compile(
+    r"\b(?:не\s+(?:горит|горел[аои]?|светит|светил[аои]?|светится|светил(?:ось|ась))|"
+    r"без\s+света|темно(?:ты|й|ю)?|убери(?:те)?\s+свет)\b",
+    re.IGNORECASE,
+)
+NATURAL_ON_RE = re.compile(
+    r"\b(?:светло|светл(?:ым|ой|ую)|горит|горел[аои]?|светит|светил[аои]?|"
+    r"светится|светил(?:ось|ась)|светящ(?:имся|ейся)|работает)\b",
+    re.IGNORECASE,
+)
+NATURAL_LIGHT_STATE_RE = re.compile(
+    r"\b(?:свет|света|светло|светл(?:ым|ой|ую)|темно(?:ты|й|ю)?)\b",
+    re.IGNORECASE,
+)
+DEICTIC_TARGET_RE = re.compile(r"\b(?:его|ее|её|их|там|это|этот|эту)\b", re.IGNORECASE)
+STRONG_ACTION_TIERS = frozenset({
+    "exact_alias", "exact_name", "exact_area_type", "entity_name_alias",
+    "session_focus",
+})
 CAUSAL_RE = re.compile(r"\b(?:почему|отчего|из-за чего|причина|причины)\b", re.IGNORECASE)
 CORRECTION_RE = re.compile(r"\b(?:нет|не то|имел(?:а)? в виду|поправка)\b", re.IGNORECASE)
 GENERAL_RE = re.compile(
@@ -241,32 +279,35 @@ def _structured_model_content(response: Mapping[str, Any]) -> str:
     return _model_content(response)
 
 
-def _choose_candidate(
-    utterance: str,
-    candidates: Sequence[Mapping[str, Any]],
-    *,
+def _parse_model_action_fields(
+    utterance: str, *,
     endpoint_loader: Callable[[], OllamaEndpoint],
     ollama_call: Callable[..., dict[str, Any]],
-) -> tuple[str, ...] | None:
-    """Model can emit only turn-local refs or request clarification."""
+) -> dict[str, Any]:
+    """Parse intent fields only; the model never sees or selects targets."""
 
-    public: list[dict[str, Any]] = []
-    allowed: set[str] = set()
-    for index, candidate in enumerate(candidates[:8], 1):
-        turn_ref = f"r{index}"
-        allowed.add(turn_ref)
-        public.append(resolver.public_candidate(candidate, turn_ref))
     schema = {
         "type": "object",
         "properties": {
-            "choice": {"type": "string", "enum": [*sorted(allowed), "clarify"]},
+            "a": {"type": "string", "enum": ["on", "off", "none", "unsupported"]},
+            "n": {"type": ["string", "null"], "maxLength": 160},
+            "r": {"type": ["string", "null"], "maxLength": 80},
+            "t": {
+                "type": ["string", "null"],
+                "enum": [*sorted(resolver.TYPE_CONCEPTS), None],
+            },
         },
-        "required": ["choice"], "additionalProperties": False,
+        "required": ["a", "n", "r", "t"],
+        "additionalProperties": False,
     }
     profile = model_runtime_policy.get_profile("selector")
     prompt = (
-        "Выбери ref кандидата для команды; если неоднозначно, clarify. COMMAND=" + utterance + " CANDIDATES="
-        + resolver.dump_safe_candidate_set(public)
+        "Разбери просьбу изменить состояние дома в закрытый IntentFrame. Не выбирай устройство и не создавай IDs. "
+        "Желание, чтобы стало светло, горело или светилось, означает a=on; желание темноты, погасить или чтобы не горело — a=off. "
+        "Явный запрет выполнять действие означает a=none; другое действие означает a=unsupported. "
+        "Ключ n: только явно названное устройство без комнаты и служебных слов или null. "
+        "Ключ r: явно названная комната или null. Ключ t: класс устройства или null. "
+        "Верни компактный JSON в одну строку только с ключами a,n,r,t. UTTERANCE=" + utterance
     )
     response = ollama_call(
         endpoint_loader(), "/api/generate",
@@ -275,20 +316,36 @@ def _choose_candidate(
     )
     content = _structured_model_content(response)
     if TECHNICAL_ID_RE.search(content) or SECRET_RE.search(content):
-        raise BoundedAgentError("model crossed the candidate boundary")
+        raise BoundedAgentError("model crossed the intent boundary")
     try:
-        parsed = json.loads(content, object_pairs_hook=_reject_duplicate_keys, parse_constant=_reject_constant)
+        parsed = json.loads(
+            content, object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_constant,
+        )
     except json.JSONDecodeError as error:
-        raise BoundedAgentError("model selection is malformed") from error
-    if not isinstance(parsed, dict) or set(parsed) != {"choice"}:
-        raise BoundedAgentError("model selection is malformed")
-    choice = parsed.get("choice")
-    if not isinstance(choice, str) or choice not in allowed | {"clarify"}:
-        raise BoundedAgentError("model selection is malformed")
-    if choice == "clarify":
-        return None
-    mapping = {f"r{index}": str(candidate["target_ref"]) for index, candidate in enumerate(candidates[:8], 1)}
-    return (mapping[choice],)
+        raise BoundedAgentError("model intent is malformed") from error
+    if not isinstance(parsed, dict) or set(parsed) != {"a", "n", "r", "t"}:
+        raise BoundedAgentError("model intent is malformed")
+    if parsed.get("a") not in {"on", "off", "none", "unsupported"}:
+        raise BoundedAgentError("model intent is malformed")
+    for key, limit in (("n", 160), ("r", 80)):
+        value = parsed.get(key)
+        if value is not None and (not isinstance(value, str) or len(value) > limit):
+            raise BoundedAgentError("model intent is malformed")
+        if isinstance(value, str) and not value.strip():
+            parsed[key] = None
+    if parsed.get("t") not in {*resolver.TYPE_CONCEPTS, None}:
+        raise BoundedAgentError("model intent is malformed")
+    action = {
+        "on": "turn_on", "off": "turn_off", "none": None,
+        "unsupported": "unsupported",
+    }[parsed["a"]]
+    return {
+        "intent": "not_action" if action is None else "action",
+        "action": action,
+        "requested_name": parsed["n"], "requested_area": parsed["r"],
+        "requested_type": parsed["t"], "requested_feature": "power",
+    }
 
 
 def _general_answer(
@@ -594,10 +651,21 @@ def _clarification_answer(frame: IntentFrame, inventory: dict[str, Any]) -> str:
     return validate_owner_answer(prefix + "Уточните цель: " + "; ".join(labels) + ".")
 
 
-def _parse_shadow_action(question: str) -> tuple[action_policy.ActionName, bool | None]:
+def _parse_shadow_action(question: str) -> tuple[action_policy.ActionName, bool | None] | None:
+    """Deterministic fast path; free speech is handled by the structured parser."""
+
     on = list(TURN_ON_RE.finditer(question))
     off = list(TURN_OFF_RE.finditer(question))
-    if NEGATED_ACTION_RE.search(question) or UNSUPPORTED_ACTION_RE.search(question) or len(on) + len(off) != 1:
+    if NEGATED_ACTION_RE.search(question) or UNSUPPORTED_ACTION_RE.search(question):
+        return "unsupported", None
+    if not on and not off and ACTION_FALLBACK_CUE_RE.search(question):
+        if NATURAL_OFF_RE.search(question):
+            return "turn_off", False
+        if NATURAL_ON_RE.search(question):
+            return "turn_on", True
+    if len(on) + len(off) == 0:
+        return ("unsupported", None) if CONTROL_WORD_RE.search(question) else None
+    if len(on) + len(off) != 1:
         return "unsupported", None
     return ("turn_on", True) if on else ("turn_off", False)
 
@@ -608,6 +676,112 @@ def _action_scope(inventory: Mapping[str, Any], question: str) -> action_policy.
         tuple(extracted["requested_areas"]), tuple(extracted["requested_types"]),
         extracted["requested_name"], str(extracted["requested_feature"]),
     )
+
+
+def _model_action_scope(
+    inventory: Mapping[str, Any], utterance: str, fields: Mapping[str, Any],
+) -> action_policy.ActionScope:
+    base = _action_scope(inventory, utterance)
+    requested_name = fields.get("requested_name")
+    requested_area = fields.get("requested_area")
+    requested_type = fields.get("requested_type")
+    if isinstance(requested_name, str):
+        requested_name = resolver.normalize_text(requested_name)
+        if not resolver.owner_text_supports(requested_name, utterance):
+            requested_name = None
+    if isinstance(requested_area, str):
+        requested_area = resolver.normalize_text(requested_area)
+        if not resolver.owner_text_supports(requested_area, utterance):
+            requested_area = None
+        if requested_area is not None:
+            canonical = resolver.extract_action_scope(inventory, requested_area)["requested_areas"]
+            areas = tuple(canonical) if canonical else (requested_area,)
+        else:
+            areas = base.requested_areas
+    else:
+        areas = base.requested_areas
+    if isinstance(requested_type, str):
+        if not resolver.owner_text_supports_type(requested_type, utterance):
+            requested_type = None
+        types = (requested_type,) if requested_type is not None else base.requested_types
+    else:
+        types = base.requested_types
+    return action_policy.ActionScope(
+        areas, types,
+        requested_name if isinstance(requested_name, str) else base.requested_name,
+        "power",
+    )
+
+
+def parse_action_intent(
+    question: str, inventory: Mapping[str, Any], *,
+    endpoint_loader: Callable[[], OllamaEndpoint],
+    ollama_call: Callable[..., dict[str, Any]],
+) -> IntentFrame | None:
+    """Create the one closed action IntentFrame, with a bounded model fallback."""
+
+    deterministic = _parse_shadow_action(question)
+    if deterministic is not None:
+        action, value = deterministic
+        try:
+            scope = _action_scope(inventory, question)
+        except ValueError:
+            scope = action_policy.ActionScope()
+            action, value = "unsupported", None
+        if (
+            action in {"turn_on", "turn_off"}
+            and not scope.requested_types
+            and NATURAL_LIGHT_STATE_RE.search(question)
+        ):
+            scope = action_policy.ActionScope(
+                scope.requested_areas, ("light",), scope.requested_name,
+                scope.requested_feature,
+            )
+        return IntentFrame(
+            "action", control_requested=True, action=action, value=value,
+            scope=scope,
+        )
+    if not ACTION_FALLBACK_CUE_RE.search(question):
+        return None
+    fields = _parse_model_action_fields(
+        question, endpoint_loader=endpoint_loader, ollama_call=ollama_call,
+    )
+    if fields["intent"] != "action" or fields["action"] is None:
+        return IntentFrame(
+            "action", control_requested=False, selector_used=True,
+            action="unsupported", value=None, scope=action_policy.ActionScope(),
+        )
+    action = fields["action"]
+    value = True if action == "turn_on" else False if action == "turn_off" else None
+    scope = _model_action_scope(inventory, question, fields)
+    return IntentFrame(
+        "action", control_requested=True, selector_used=True,
+        action=action, value=value, scope=scope,
+    )
+
+
+def _scope_query(scope: action_policy.ActionScope) -> str:
+    parts = [
+        scope.requested_name,
+        *scope.requested_types,
+        *scope.requested_areas,
+    ]
+    return " ".join(part for part in parts if part)
+
+
+def _resolution_evidence(
+    resolution: resolver.Resolution, scope: action_policy.ActionScope,
+    *, weak_owner_verified: bool = False,
+) -> str:
+    if not resolution.candidates:
+        return "none"
+    if len(resolution.candidates) != 1:
+        return "ambiguous"
+    if resolution.tier in STRONG_ACTION_TIERS and not resolution.weak:
+        return "strong"
+    if weak_owner_verified or scope.requested_name or (scope.requested_areas and scope.requested_types):
+        return "weak_verified"
+    return "insufficient"
 
 
 def _scope_mapping(scope: action_policy.ActionScope) -> dict[str, Any]:
@@ -637,6 +811,7 @@ def _seal_trace(
     selected: Mapping[str, Any] | None, decision: action_policy.PolicyDecision,
     plan: action_policy.ActionPlan | None,
     trace_sink: Callable[[str], None] | None,
+    resolution_tier: str = "none", target_evidence: str = "none",
 ) -> str:
     trace_candidates = [
         _trace_candidate(
@@ -657,6 +832,10 @@ def _seal_trace(
         "intent": {
             "kind": frame.kind, "action": frame.action, "value": frame.value,
             "scope": _scope_mapping(frame.scope or action_policy.ActionScope()),
+            "parser": "model" if frame.selector_used else "deterministic",
+        },
+        "target_decision": {
+            "resolution_tier": resolution_tier, "evidence": target_evidence,
         },
         "candidates": trace_candidates, "selected_target": selected_public,
         "policy": {"decision": decision.decision, "reason": decision.reason},
@@ -675,108 +854,142 @@ def _seal_trace(
 
 
 def _shadow_action_result(
-    question: str, inventory: dict[str, Any], *,
-    endpoint_loader: Callable[[], OllamaEndpoint],
-    ollama_call: Callable[..., dict[str, Any]],
+    question: str, inventory: dict[str, Any], frame: IntentFrame,
+    focus: SessionFocus, now: float, *,
     trace_sink: Callable[[str], None] | None,
 ) -> TurnResult:
-    action, value = _parse_shadow_action(question)
-    try:
-        scope = _action_scope(inventory, question)
-    except ValueError:
-        scope = action_policy.ActionScope()
-        action, value = "unsupported", None
-    base_frame = IntentFrame(
-        "action", control_requested=True, action=action, value=value, scope=scope,
-    )
-    if action == "unsupported":
+    scope = frame.scope or action_policy.ActionScope()
+    if frame.action == "unsupported":
         decision = action_policy.PolicyDecision("hard_deny", "unsupported_or_untrusted_command")
-        trace = _seal_trace(
-            frame=base_frame, candidates=(), selected=None, decision=decision,
-            plan=None, trace_sink=trace_sink,
-        )
-        return TurnResult(
-            base_frame, (), "Действие запрещено политикой shadow; план не создан.",
-            action_plan=None, trace_json=trace,
-        )
-
-    resolution = resolver.resolve_targets(inventory, question, "power")
-    candidates = resolution.candidates
-    if not candidates:
-        frame = IntentFrame(
-            "clarification", control_requested=True, action=action, value=value, scope=scope,
-        )
-        decision = action_policy.PolicyDecision("hard_deny", "target_not_resolved")
         trace = _seal_trace(
             frame=frame, candidates=(), selected=None, decision=decision,
             plan=None, trace_sink=trace_sink,
         )
         return TurnResult(
-            frame, (), "Не удалось однозначно определить цель. Уточните устройство или комнату; shadow-план не создан.",
+            frame, (), "Действие запрещено политикой shadow; план не создан.",
+            action_plan=None, trace_json=trace,
+        )
+
+    scope_query = _scope_query(scope)
+    weak_owner_verified = False
+    if not scope_query and DEICTIC_TARGET_RE.search(question) and focus.last_target_refs:
+        candidates = resolver.profiles_for_target_refs(inventory, focus.last_target_refs)
+        resolution = resolver.Resolution(
+            "session_focus", tuple(str(item["target_ref"]) for item in candidates),
+            candidates,
+        )
+    else:
+        raw_resolution = resolver.resolve_targets(
+            inventory, question, "power", preserve_feature_words=True,
+        )
+        if (
+            raw_resolution.tier in {"exact_alias", "exact_name", "entity_name_alias"}
+            and raw_resolution.candidates
+        ):
+            resolution = raw_resolution
+        elif raw_resolution.tier in STRONG_ACTION_TIERS and len(raw_resolution.candidates) == 1:
+            resolution = raw_resolution
+        elif (
+            not frame.selector_used
+            and raw_resolution.weak and len(raw_resolution.candidates) == 1
+            and resolver.weak_action_evidence_matches(inventory, raw_resolution.candidates[0], question)
+        ):
+            resolution = raw_resolution
+            weak_owner_verified = True
+        else:
+            resolution = resolver.resolve_targets(inventory, scope_query or question, "power")
+    candidates = resolution.candidates
+    evidence = _resolution_evidence(
+        resolution, scope, weak_owner_verified=weak_owner_verified,
+    )
+    if not candidates:
+        clarify_frame = IntentFrame(
+            "clarification", control_requested=True, selector_used=frame.selector_used,
+            action=frame.action, value=frame.value, scope=scope,
+        )
+        decision = action_policy.PolicyDecision("hard_deny", "target_not_resolved")
+        trace = _seal_trace(
+            frame=clarify_frame, candidates=(), selected=None, decision=decision,
+            plan=None, trace_sink=trace_sink, resolution_tier=resolution.tier,
+            target_evidence=evidence,
+        )
+        return TurnResult(
+            clarify_frame, (), "Не удалось однозначно определить цель. Уточните устройство или комнату; shadow-план не создан.",
             action_plan=None, trace_json=trace,
         )
     if len(candidates) != 1:
         refs = tuple(str(candidate["target_ref"]) for candidate in candidates)
-        frame = IntentFrame(
+        clarify_frame = IntentFrame(
             "clarification", clarification_target_refs=refs, control_requested=True,
-            action=action, value=value, scope=scope,
+            selector_used=frame.selector_used, action=frame.action,
+            value=frame.value, scope=scope,
         )
         decision = action_policy.PolicyDecision("hard_deny", "equal_candidates")
         trace = _seal_trace(
-            frame=frame, candidates=candidates, selected=None, decision=decision,
-            plan=None, trace_sink=trace_sink,
+            frame=clarify_frame, candidates=candidates, selected=None, decision=decision,
+            plan=None, trace_sink=trace_sink, resolution_tier=resolution.tier,
+            target_evidence=evidence,
         )
         return TurnResult(
-            frame, (), "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+            clarify_frame, (), "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
             action_plan=None, trace_json=trace,
         )
 
     candidate = candidates[0]
+    decision = action_policy.ACTION_POLICY_REGISTRY.evaluate(frame.action, candidate)
+    if decision.decision != "allow_shadow" or decision.domain is None:
+        trace = _seal_trace(
+            frame=frame, candidates=candidates, selected=candidate,
+            decision=decision, plan=None, trace_sink=trace_sink,
+            resolution_tier=resolution.tier, target_evidence=evidence,
+        )
+        return TurnResult(
+            frame, (), "Эта цель или команда жёстко запрещена политикой shadow; план не создан.",
+            action_plan=None, trace_json=trace,
+        )
+
+    verification_scope = scope
+    if resolution.tier in {"exact_alias", "exact_name", "entity_name_alias"}:
+        verification_scope = action_policy.ActionScope(requested_feature=scope.requested_feature)
     matches, mismatch_reason = resolver.action_scope_matches(
         inventory, candidate, {
-            "requested_areas": scope.requested_areas,
-            "requested_types": scope.requested_types,
-            "requested_name": scope.requested_name,
-            "requested_feature": scope.requested_feature,
+            "requested_areas": verification_scope.requested_areas,
+            "requested_types": verification_scope.requested_types,
+            "requested_name": verification_scope.requested_name,
+            "requested_feature": verification_scope.requested_feature,
         },
     )
     if not matches:
         decision = action_policy.PolicyDecision("hard_deny", mismatch_reason)
-        trace = _seal_trace(
-            frame=base_frame, candidates=candidates, selected=None, decision=decision,
-            plan=None, trace_sink=trace_sink,
-        )
-        return TurnResult(
-            base_frame, (), "Цель не совпадает с указанной комнатой, типом или именем; shadow-план не создан.",
-            action_plan=None, trace_json=trace,
-        )
-
-    decision = action_policy.ACTION_POLICY_REGISTRY.evaluate(action, candidate)
-    if decision.decision != "allow_shadow" or decision.domain is None:
-        trace = _seal_trace(
-            frame=base_frame, candidates=candidates, selected=candidate,
-            decision=decision, plan=None, trace_sink=trace_sink,
-        )
-        return TurnResult(
-            base_frame, (), "Эта цель или команда жёстко запрещена политикой shadow; план не создан.",
-            action_plan=None, trace_json=trace,
-        )
-
-    selected = _choose_candidate(
-        question, candidates, endpoint_loader=endpoint_loader, ollama_call=ollama_call,
-    )
-    if selected != (str(candidate["target_ref"]),):
-        frame = IntentFrame(
+        clarify_frame = IntentFrame(
             "clarification", clarification_target_refs=(str(candidate["target_ref"]),),
-            control_requested=True, selector_used=True, action=action, value=value, scope=scope,
+            control_requested=True, selector_used=frame.selector_used,
+            action=frame.action, value=frame.value, scope=scope,
         )
-        clarify = action_policy.PolicyDecision("hard_deny", "model_clarification")
         trace = _seal_trace(
-            frame=frame, candidates=candidates, selected=None, decision=clarify,
-            plan=None, trace_sink=trace_sink,
+            frame=clarify_frame, candidates=candidates, selected=None, decision=decision,
+            plan=None, trace_sink=trace_sink, resolution_tier=resolution.tier,
+            target_evidence=evidence,
         )
         return TurnResult(
-            frame, (), "Нужно уточнение; shadow-план не создан.",
+            clarify_frame, (), "Цель не совпадает с указанной комнатой, типом или именем; shadow-план не создан.",
+            action_plan=None, trace_json=trace,
+        )
+
+    if evidence == "insufficient":
+        decision = action_policy.PolicyDecision("hard_deny", "insufficient_target_evidence")
+        clarify_frame = IntentFrame(
+            "clarification", clarification_target_refs=(str(candidate["target_ref"]),),
+            control_requested=True, selector_used=frame.selector_used,
+            action=frame.action, value=frame.value, scope=scope,
+        )
+        trace = _seal_trace(
+            frame=clarify_frame, candidates=candidates, selected=None, decision=decision,
+            plan=None, trace_sink=trace_sink, resolution_tier=resolution.tier,
+            target_evidence=evidence,
+        )
+        return TurnResult(
+            clarify_frame, (), "Недостаточно подтверждений цели; shadow-план не создан.",
             action_plan=None, trace_json=trace,
         )
 
@@ -787,22 +1000,24 @@ def _shadow_action_result(
     )
     plan = action_policy.seal_action_plan(
         target_ref=str(candidate["target_ref"]), target_label=label, areas=areas,
-        domain=decision.domain, action=action, scope=scope, decision=decision,
+        domain=decision.domain, action=str(frame.action), scope=scope, decision=decision,
     )
-    frame = IntentFrame(
+    result_frame = IntentFrame(
         "action", (IntentSelection(str(candidate["target_ref"]), "power"),),
-        control_requested=True, selector_used=True, action=action,
+        control_requested=True, selector_used=frame.selector_used, action=frame.action,
         value=plan.value, scope=scope,
     )
     trace = _seal_trace(
-        frame=frame, candidates=candidates, selected=candidate,
+        frame=result_frame, candidates=candidates, selected=candidate,
         decision=decision, plan=plan, trace_sink=trace_sink,
+        resolution_tier=resolution.tier, target_evidence=evidence,
     )
-    verb = "включить" if action == "turn_on" else "выключить"
+    focus.remember((str(candidate["target_ref"]),), "power", now)
+    verb = "включить" if frame.action == "turn_on" else "выключить"
     answer = validate_owner_answer(
         f"Shadow-план построен: {verb} {label}. Ничего не отправлено в Home Assistant."
     )
-    return TurnResult(frame, (), answer, action_plan=plan, trace_json=trace)
+    return TurnResult(result_frame, (), answer, action_plan=plan, trace_json=trace)
 
 
 def process_turn(
@@ -823,15 +1038,20 @@ def process_turn(
     inventory = inventory_loader()
     if not isinstance(inventory, dict):
         raise BoundedAgentError("HomeGraph is unavailable")
-    if CONTROL_WORD_RE.search(question):
-        return _shadow_action_result(
-            question, inventory, endpoint_loader=endpoint_loader,
-            ollama_call=ollama_call, trace_sink=trace_sink,
-        )
     focus = context.get("session_focus")
     if not isinstance(focus, SessionFocus):
         focus = SessionFocus()
     now = clock()
+    focus.expire(now)
+    action_frame = parse_action_intent(
+        question, inventory, endpoint_loader=endpoint_loader,
+        ollama_call=ollama_call,
+    )
+    if action_frame is not None:
+        return _shadow_action_result(
+            question, inventory, action_frame, focus, now,
+            trace_sink=trace_sink,
+        )
     frame = _build_intent_frame(
         question, inventory, focus, now,
         endpoint_loader=endpoint_loader, ollama_call=ollama_call,

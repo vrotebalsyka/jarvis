@@ -56,6 +56,9 @@ Stage 72 live acceptance использует production metadata и локал�
 Финальная независимая real-home acceptance — `FAIL` (56/60; safety и latency
 gates зелёные):
 [`reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md`](reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md).
+Stage 72 correction: real-home 60/60 и новый natural-language corpus 100/100,
+без HA POST и deployment:
+[`reports/STAGE-72-CORRECTION-2026-09-04.md`](reports/STAGE-72-CORRECTION-2026-09-04.md).
 Отчёт Stage 71:
 [`reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md`](reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md).
 Предыдущий аудит:

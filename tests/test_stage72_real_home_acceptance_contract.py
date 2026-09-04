@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_PATH = ROOT / "tests" / "live_stage72_real_home_acceptance.py"
 MANIFEST_PATH = ROOT / "tests" / "data" / "stage72_real_home_owner_reviewed.jsonl"
-MANIFEST_SHA256 = "52bc316294cdbccad90f191a5d8147c2ea430506e3e98ddafa46a4b0d35c0fe7"
+MANIFEST_SHA256 = "fed9fdf1d0a21fea6e0a5f4f4813015836c5ecbc1d88832098db42ab983d00fa"
 
 
 def load_runner():

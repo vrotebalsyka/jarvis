@@ -57,6 +57,7 @@ class RepositoryContractTests(unittest.TestCase):
             "reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md",
             "reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md",
             "reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md",
+            "reports/STAGE-72-CORRECTION-2026-09-04.md",
         })
 
     def test_stage72_has_planning_but_no_control_surface(self) -> None:

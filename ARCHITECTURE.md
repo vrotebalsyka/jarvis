@@ -54,11 +54,16 @@ Host формирует закрытый `IntentFrame` (`conversation`, `read`, 
 `light|switch × turn_on|turn_off`. Vacuum, button, appliance, lock, climate,
 script, остальные domains и все прочие actions получают hard-deny. Scope
 содержит запрошенные room/type/name/feature; host повторно сверяет каждое поле
-с resolved target. Равные кандидаты всегда ведут к clarification до вызова
-модели.
+с resolved target. Один structured IntentFrame parser имеет deterministic fast
+path для очевидных форм и bounded Qwen fallback для свободной речи. Модель
+возвращает только action/requested name/area/type/feature, не видит candidates
+и не выбирает target.
 
-Модель получает лишь safe labels и turn-local `rN`, после чего может выбрать
-только opaque ref или clarification. Host создаёт immutable ActionPlan с
+Strong unique exact name/alias/entity-name или area+type принимается host без
+модели. Exact-name ties и остальные равные candidates всегда дают
+clarification. Unique weak/fuzzy evidence проходит отдельную повторную проверку
+owner tokens и строгого score margin по всему HomeGraph; недостаточная evidence
+даёт clarification. Затем host создаёт immutable ActionPlan с
 process-local HMAC seal. В плане нет entity/device/capability ID или service
 path, а исполнительного API не существует. Machine-readable trace содержит
 intent, безопасных candidates, выбранный label, policy и обязательные
@@ -71,6 +76,8 @@ paths; instrumented acceptance дополнительно блокирует л�
 ## Проверка
 
 Stage 71 independent oracle продолжает защищать read path. Stage 72 corpus
-содержит ровно 1000 raw команд, frozen owner blind corpus — 40 строк. Отдельный
-live harness проверяет production parser/resolver и фактическую локальную
-модель при физически заблокированном HA POST. Реального action executor нет.
+содержит ровно 1000 raw команд, frozen owner blind corpus — 40 строк, новый
+natural-language corpus — 100 фраз. Отдельные live harnesses проверяют
+production parser/resolver, текущий real-home metadata graph и фактическую
+локальную модель при физически заблокированном HA POST. Реального action
+executor нет.

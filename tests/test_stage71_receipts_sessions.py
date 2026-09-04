@@ -176,34 +176,32 @@ class SessionFocusTests(unittest.TestCase):
         self.assertEqual(other.last_target_refs, ())
 
 
-class ModelCandidateBoundaryTests(unittest.TestCase):
-    def test_model_can_return_only_turn_local_ref_or_clarification(self) -> None:
-        graph = fixtures.graph()
-        mirrors = [item for item in graph["physical_nodes"] if item["display_name"] == "зеркало"]
-        _entities, targets, areas, integrations = __import__("home_assistant_mcp")._indexes(graph)
-        profiles = [__import__("home_assistant_mcp")._target_profile(targets[item["target_ref"]], _entities, areas, integrations) for item in mirrors]
+class ModelIntentBoundaryTests(unittest.TestCase):
+    def test_model_can_return_only_closed_intent_fields(self) -> None:
         captured: list[dict] = []
         def model(_endpoint: object, _path: str, payload: dict, **_kwargs: object) -> dict:
             captured.append(payload)
-            return {"response": '{"choice":"r2"}'}
-        selected = agent._choose_candidate("правое зеркало", profiles, endpoint_loader=lambda: object(), ollama_call=model)
-        self.assertEqual(selected, (profiles[1]["target_ref"],))
+            return {"response": '{"a":"on","n":"зеркало","r":"ванная","t":"light"}'}
+        fields = agent._parse_model_action_fields(
+            "хочу чтобы зеркало в ванной светилось",
+            endpoint_loader=lambda: object(), ollama_call=model,
+        )
+        self.assertEqual(fields, {
+            "intent": "action", "action": "turn_on",
+            "requested_name": "зеркало", "requested_area": "ванная",
+            "requested_type": "light", "requested_feature": "power",
+        })
         serialized = json.dumps(captured, ensure_ascii=False)
         self.assertNotRegex(serialized, agent.TECHNICAL_ID_RE)
-        self.assertNotIn(profiles[0]["target_ref"], serialized)
-        self.assertNotIn("main_brush", serialized)
+        self.assertNotIn("CANDIDATES", serialized)
+        self.assertNotIn("target_ref", serialized)
         with self.assertRaises(agent.BoundedAgentError):
-            agent._choose_candidate(
-                "зеркало", profiles, endpoint_loader=lambda: object(),
-                ollama_call=lambda *_a, **_k: {"response": '{"choice":"sensor.bad"}'},
+            agent._parse_model_action_fields(
+                "хочу света", endpoint_loader=lambda: object(),
+                ollama_call=lambda *_a, **_k: {
+                    "response": '{"a":"on","n":"sensor.bad","r":null,"t":"light"}'
+                },
             )
-        poisoned = dict(profiles[0])
-        poisoned["display_name"] = "sensor.secret"
-        captured.clear()
-        agent._choose_candidate(
-            "вариант", [poisoned, profiles[1]], endpoint_loader=lambda: object(), ollama_call=model,
-        )
-        self.assertNotIn("sensor.secret", json.dumps(captured, ensure_ascii=False))
 
 
 if __name__ == "__main__":

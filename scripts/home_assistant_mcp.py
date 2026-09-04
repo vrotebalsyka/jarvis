@@ -78,8 +78,17 @@ QUERY_STOPWORDS = frozenset({
     "там", "текущий", "текущее", "у", "что", "пожалуйста", "скажи", "устройство",
     "устройства", "свежие", "свежий", "данные", "текущие", "осталось", "остался",
     "осталась", "включи", "выключи", "переключи", "нажми", "запусти", "останови",
-    "включить", "выключить", "зажги", "зажечь", "погаси", "погасить", "вруби",
-    "отключи", "активируй", "деактивируй", "разблокируй", "заблокируй",
+    "включите", "выключите", "включить", "выключить", "зажги", "зажгите", "зажечь",
+    "погаси", "погасите", "погасить", "вруби", "отключи", "отключите", "отключить", "активируй",
+    "активировать", "деактивируй", "деактивировать", "разблокируй", "заблокируй",
+    "сделай", "сделайте", "пусть", "хочу", "чтобы", "хотелось", "будет",
+    "было", "можешь", "можете", "прошу", "убери", "уберите", "оставь", "оставьте",
+    "теперь", "его", "ее", "её", "их", "это", "этот", "эту",
+    "будь", "будьте", "добр", "добры", "мог", "могла", "ты", "меня",
+    "прямо", "ненадолго", "минутку", "задержки", "сначала", "сперва",
+    "начала", "первым", "делом", "после", "этого", "остался", "осталась",
+    "надо", "если", "перед", "сном", "уходом",
+    "так", "помощью", "указания", "комнаты",
     "нет", "не", "лучше", "имел", "виду",
     "home", "assistant", "ha", "нужен", "нужна", "нужно", "только", "прочитай",
     "интересует", "уточни", "догадок", "изменяется", "сообщи", "известно",
@@ -93,6 +102,12 @@ RU_ENDINGS = (
     "юю", "ая", "яя", "ое", "ее", "ой", "ей", "ов", "ев", "ом", "ем", "ах",
     "ях", "ам", "ям", "ы", "и", "а", "я", "у", "ю", "е",
 )
+ACTION_SCOPE_NOISE = frozenset({
+    "светло", "темно", "горит", "горел", "горела", "горело", "горели",
+    "светит", "светил", "светила", "светило", "светилась", "светилось",
+    "работает", "работал", "работала", "работало", "осветить", "стало",
+    "станет", "остался", "осталась", "осталось", "останется", "больше", "темноты",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +209,20 @@ def _phrase_present(phrase: str, query: str) -> bool:
     return bool(width) and any(query_tokens[index:index + width] == phrase_tokens for index in range(len(query_tokens) - width + 1))
 
 
+def _weak_phrase_present(phrase: str, query: str) -> bool:
+    phrase_tokens = _tokens(normalize_text(phrase))
+    query_tokens = _tokens(query)
+    width = len(phrase_tokens)
+    return bool(width) and any(
+        all(
+            _weak_word(left, right)
+            or (min(len(left), len(right)) >= 4 and _edit_distance(left, right) <= 1)
+            for left, right in zip(query_tokens[index:index + width], phrase_tokens)
+        )
+        for index in range(len(query_tokens) - width + 1)
+    )
+
+
 def _feature_words() -> set[str]:
     result: set[str] = set()
     for terms in FEATURE_TERMS.values():
@@ -225,6 +254,13 @@ def normalize_device_query(value: Any, feature: str | None = None) -> str:
         and not any(_weak_word(token, feature_word) for feature_word in removed_words)
     ]
     return " ".join(tokens)
+
+
+def normalize_action_target_query(value: Any) -> str:
+    """Remove action discourse while preserving words that may belong to a name."""
+
+    normalized = normalize_text(value)
+    return " ".join(token for token in _tokens(normalized) if token not in QUERY_STOPWORDS)
 
 
 def load_inventory(path: Path | None = None) -> dict[str, Any]:
@@ -415,11 +451,15 @@ def _distinctive_score(tokens: Sequence[str], profile: Mapping[str, Any]) -> int
 def resolve_targets(
     inventory: dict[str, Any], utterance: str, feature: str,
     *, allowed_target_refs: Sequence[str] | None = None,
+    preserve_feature_words: bool = False,
 ) -> Resolution:
     if feature not in FEATURES:
         raise ValueError("unknown feature")
     full_query = normalize_text(utterance)
-    query = normalize_device_query(full_query, feature)
+    query = (
+        normalize_action_target_query(full_query)
+        if preserve_feature_words else normalize_device_query(full_query, feature)
+    )
     entities, targets, areas, integrations = _indexes(inventory)
     allowed = set(allowed_target_refs) if allowed_target_refs is not None else None
     profiles = [
@@ -429,8 +469,10 @@ def resolve_targets(
     ]
     profiles = [profile for profile in profiles if profile["enabled_members"]]
     exact_tiers: list[tuple[str, list[dict[str, Any]]]] = []
-    exact_tiers.append(("exact_alias", [profile for profile in profiles if _exact_any(query, profile["aliases"])]))
-    exact_tiers.append(("exact_name", [profile for profile in profiles if _exact_any(query, profile["names"])]))
+    exact_normalizer = normalize_action_target_query if preserve_feature_words else normalize_text
+    exact = lambda values: any(exact_normalizer(value) == query for value in values if value)
+    exact_tiers.append(("exact_alias", [profile for profile in profiles if exact(profile["aliases"])]))
+    exact_tiers.append(("exact_name", [profile for profile in profiles if exact(profile["names"])]))
     concepts = _type_concepts(query)
     area_type = [
         profile for profile in profiles
@@ -449,7 +491,7 @@ def resolve_targets(
     exact_tiers.append(("exact_area_type", area_type))
     exact_tiers.append(("entity_name_alias", [
         profile for profile in profiles
-        if _exact_any(query, [*profile["entity_names"], *profile["entity_aliases"]])
+        if exact([*profile["entity_names"], *profile["entity_aliases"]])
     ]))
     for tier, matches in exact_tiers:
         unique = {str(item["target_ref"]): item for item in matches}
@@ -525,6 +567,93 @@ def resolve_targets(
     return Resolution("none", (), ())
 
 
+def profiles_for_target_refs(
+    inventory: Mapping[str, Any], target_refs: Sequence[str],
+) -> tuple[dict[str, Any], ...]:
+    """Return canonical host profiles for an already bounded focus set."""
+
+    entities, targets, areas, integrations = _indexes(inventory)
+    profiles: list[dict[str, Any]] = []
+    for target_ref in dict.fromkeys(target_refs):
+        target = targets.get(target_ref)
+        if target is None:
+            continue
+        profile = _target_profile(target, entities, areas, integrations)
+        if profile["enabled_members"]:
+            profiles.append(profile)
+    return tuple(profiles)
+
+
+def owner_text_supports(value: str, utterance: str) -> bool:
+    """Require every model-extracted word to have owner-text evidence."""
+
+    value_tokens = _tokens(normalize_text(value))
+    utterance_tokens = _tokens(normalize_text(utterance))
+    return bool(value_tokens) and all(
+        any(_weak_word(token, owner_token) for owner_token in utterance_tokens)
+        for token in value_tokens
+    )
+
+
+def owner_text_supports_type(concept: str, utterance: str) -> bool:
+    if concept not in TYPE_CONCEPTS:
+        return False
+    utterance_tokens = _tokens(normalize_text(utterance))
+    return any(
+        _weak_word(owner_token, type_token)
+        for owner_token in utterance_tokens
+        for word in TYPE_CONCEPTS[concept]
+        for type_token in _tokens(normalize_text(word))
+    )
+
+
+def weak_action_evidence_matches(
+    inventory: Mapping[str, Any], profile: Mapping[str, Any], utterance: str,
+) -> bool:
+    """Independently recheck a unique fuzzy result against its human metadata."""
+
+    query_tokens = _tokens(normalize_action_target_query(utterance))
+    values = [
+        *profile.get("names", ()), *profile.get("aliases", ()),
+        *profile.get("entity_names", ()), *profile.get("entity_aliases", ()),
+        *profile.get("manufacturer_model", ()),
+    ]
+    candidate_tokens = [
+        token for value in values if isinstance(value, str)
+        for token in _tokens(normalize_text(value))
+    ]
+    if not query_tokens or not candidate_tokens:
+        return False
+    if not all(any(_weak_word(token, candidate) for candidate in candidate_tokens) for token in query_tokens):
+        return False
+    single_token_ok = len(query_tokens) >= 2
+    if not single_token_ok:
+        token = query_tokens[0]
+        single_names = [
+            _tokens(normalize_text(value)) for value in [*profile.get("names", ()), *profile.get("aliases", ())]
+            if isinstance(value, str)
+        ]
+        single_token_ok = any(
+        len(name) == 1 and min(len(token), len(name[0])) >= 5
+        and _edit_distance(_stem(token), _stem(name[0])) <= 1
+        for name in single_names
+        )
+    if not single_token_ok:
+        return False
+    entities, targets, areas, integrations = _indexes(inventory)
+    profiles = [
+        _target_profile(target, entities, areas, integrations)
+        for target in targets.values()
+    ]
+    selected_score = _weak_score(normalize_action_target_query(utterance), profile)
+    competing = [
+        _weak_score(normalize_action_target_query(utterance), candidate)
+        for candidate in profiles
+        if candidate["target_ref"] != profile.get("target_ref")
+    ]
+    return selected_score > 0 and selected_score > max(competing, default=0)
+
+
 def public_candidate(profile: Mapping[str, Any], turn_ref: str) -> dict[str, Any]:
     def safe_label(value: Any, fallback: str) -> str:
         if not isinstance(value, str):
@@ -562,24 +691,27 @@ def extract_action_scope(inventory: Mapping[str, Any], utterance: str) -> dict[s
                 continue
             normalized = normalize_text(name)
             tokens = _tokens(normalized)
-            matched = _phrase_present(normalized, full_query) or (
-                len(tokens) == 1 and any(_weak_word(token, tokens[0]) for token in query_tokens)
-            )
+            matched = _phrase_present(normalized, full_query) or _weak_phrase_present(normalized, full_query)
             if matched:
                 label = str(area.get("name") or name)
                 if label not in requested_areas:
                     requested_areas.append(label)
                 area_tokens.update(tokens)
                 break
-    concepts = tuple(sorted(_type_concepts(full_query)))
+    device_query = normalize_device_query(utterance, "power")
+    concepts = tuple(sorted(_type_concepts(full_query) or _weak_type_concepts(device_query)))
     removed_type_tokens = {
         token for concept in concepts for word in TYPE_CONCEPTS[concept]
         for token in _tokens(normalize_text(word))
     }
-    device_query = normalize_device_query(utterance, "power")
     distinctive = [
         token for token in _tokens(device_query)
-        if not any(_weak_word(token, removed) for removed in removed_type_tokens | area_tokens)
+        if token not in ACTION_SCOPE_NOISE
+        if not any(
+            _weak_word(token, removed)
+            or (min(len(token), len(removed)) >= 4 and _edit_distance(token, removed) <= 1)
+            for removed in removed_type_tokens | area_tokens
+        )
     ]
     return {
         "requested_areas": tuple(requested_areas),

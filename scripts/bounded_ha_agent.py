@@ -166,7 +166,7 @@ class ReadReceipt:
     entity_ref: str | None
     target_kind: str
     target_label: str
-    areas: tuple[str, ...]
+    areas: tuple[str, ...]  # HA registry bindings only; inference is not a fact.
     feature: str
     value_kind: Literal[
         "number", "boolean", "on_off", "enum", "problem", "unknown",
@@ -494,7 +494,7 @@ def _receipt(
     snapshot_observed_at: str | None,
 ) -> ReadReceipt:
     label = _safe_text(target.get("display_name"), fallback="Устройство")
-    areas = tuple(_safe_text(item, fallback="") for item in target.get("areas", []) if _safe_text(item, fallback=""))
+    areas = tuple(_safe_text(item, fallback="") for item in target.get("registry_areas", []) if _safe_text(item, fallback=""))
     if fact is None:
         return ReadReceipt(
             target_ref, None, str(target.get("kind") or "logical"), label, areas, feature,
@@ -644,7 +644,7 @@ def _clarification_answer(frame: IntentFrame, inventory: dict[str, Any]) -> str:
     for ref in frame.clarification_target_refs[:8]:
         target = resolver.target_context(inventory, ref)
         label = _safe_text(target.get("display_name"), fallback="Устройство")
-        areas = target.get("areas")
+        areas = target.get("registry_areas")
         area = _safe_text(areas[0], fallback="") if isinstance(areas, list) and areas else ""
         labels.append(f"{label} ({area})" if area else label)
     prefix = "Управление отключено; ничего не меняю. " if frame.control_requested else ""

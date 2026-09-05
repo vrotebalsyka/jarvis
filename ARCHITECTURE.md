@@ -37,6 +37,13 @@ current value и timestamps запрещены validator-ом. Read turn все�
 новый HA snapshot, затем создаёт typed ReadReceipt и grounded answer. Причина
 сообщается только при causal evidence. Session focus ephemeral, TTL 20 минут.
 
+Area provenance: resolver context разделяет `registry_areas` (только HA
+`area_refs`) и `inferred_areas` (отдельная гипотеза из human metadata при
+отсутствии registry binding и единственном room concept). Effective area для
+shadow targeting сохраняется; это не превращает inferred area в HA-факт.
+`ReadReceipt.areas` содержит только registry areas. Independent oracle
+проверяет их напрямую по registry metadata и не импортирует resolver.
+
 Host формирует закрытый `IntentFrame` (`conversation`, `read`, `action`,
 `clarification`) с action/value/scope. Ordered resolver остаётся единственным:
 

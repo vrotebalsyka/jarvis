@@ -9,7 +9,6 @@ import http.client
 import json
 import os
 import re
-import statistics
 import sys
 import time
 from pathlib import Path
@@ -106,7 +105,7 @@ def target_patterns(document: Mapping[str, Any], pattern: str) -> set[str]:
     }
 
 
-def run(token_file: Path, *, model_samples: int = 20) -> dict[str, Any]:
+def run(token_file: Path) -> dict[str, Any]:
     token = token_file.read_text(encoding="ascii").strip()
     if adapter.TOKEN_RE.fullmatch(token) is None:
         raise RuntimeError("credential is invalid")
@@ -145,10 +144,7 @@ def run(token_file: Path, *, model_samples: int = 20) -> dict[str, Any]:
             failures += 1
             continue
         result, snapshot, duration = execute(str(row["utterance"]))
-        if result.frame.selector_used:
-            # Actual selector latency is measured separately below.
-            pass
-        else:
+        if not result.frame.selector_used:
             deterministic_latencies.append(duration)
         if row.get("clarification"):
             actual = set(result.frame.clarification_target_refs)
@@ -204,25 +200,8 @@ def run(token_file: Path, *, model_samples: int = 20) -> dict[str, Any]:
         for receipt in result.receipts:
             (read_physical if receipt.target_kind == "physical" else read_logical).add(receipt.target_ref)
 
-    # Real Ollama-assisted selector: only safe labels and opaque turn-local refs.
-    entities, targets, areas, integrations = resolver._indexes(document)
-    profiles = [
-        resolver._target_profile(target, entities, areas, integrations)
-        for target in list(targets.values())[:2]
-    ]
-    model_latencies: list[float] = []
-    for _sample in range(model_samples):
-        started = time.perf_counter()
-        try:
-            agent._choose_candidate(
-                "выбери подходящий вариант", profiles,
-                endpoint_loader=agent.load_runtime_ollama_endpoint,
-                ollama_call=agent.call_ollama,
-            )
-        except agent.BoundedAgentError:
-            failures += 1
-        model_latencies.append(time.perf_counter() - started)
-
+    # Stage 72 resolves read targets on the host. The retired standalone model
+    # selector is not a production path; all reads above use process_turn.
     def latency(values: list[float]) -> dict[str, float | int]:
         return {
             "n": len(values), "p50_s": round(percentile(values, .50), 4),
@@ -231,14 +210,13 @@ def run(token_file: Path, *, model_samples: int = 20) -> dict[str, Any]:
         }
 
     deterministic = latency(deterministic_latencies)
-    assisted = latency(model_latencies)
     passed = (
         wrong == invented == lost == model_ids == failures == 0
         and not persistent_current
         and graph_coverage["missing_enabled_current"] == 0
         and graph_coverage["enabled_current"] == graph_coverage["represented_enabled_current"]
         and len(read_physical) >= 30 and len(read_logical) >= 10
-        and deterministic["p95_s"] <= 1.5 and assisted["p95_s"] <= 3.5
+        and deterministic["p95_s"] <= 1.5
     )
     return {
         "schema_version": 1, "status": "pass" if passed else "fail", "read_only": True,
@@ -252,17 +230,16 @@ def run(token_file: Path, *, model_samples: int = 20) -> dict[str, Any]:
         "enabled_current_entities": graph_coverage["enabled_current"],
         "represented_enabled_current_entities": graph_coverage["represented_enabled_current"],
         "physical_devices_read": len(read_physical), "logical_entities_read": len(read_logical),
-        "deterministic_latency": deterministic, "model_assisted_latency": assisted,
+        "deterministic_latency": deterministic,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--token-file", type=Path, required=True)
-    parser.add_argument("--model-samples", type=int, default=20)
     arguments = parser.parse_args()
     try:
-        report = run(arguments.token_file, model_samples=arguments.model_samples)
+        report = run(arguments.token_file)
     except Exception:
         print('{"status":"error","read_only":true,"ha_service_calls":0}', file=sys.stderr)
         return 2

@@ -351,8 +351,9 @@ def _target_profile(
         str(value) for ref in target.get("area_refs", []) if ref in areas
         for value in areas[ref].get("aliases", []) if isinstance(value, str)
     ]
-    if not area_names:
-        area_names = _semantic_areas([*names, *aliases, *entity_names, *entity_aliases], areas)
+    inferred_areas = [] if area_names else _semantic_areas(
+        [*names, *aliases, *entity_names, *entity_aliases], areas,
+    )
     domains = {str(item.get("domain")) for item in enabled if isinstance(item.get("domain"), str)}
     classes = {str(item.get("device_class")) for item in enabled if isinstance(item.get("device_class"), str)}
     platforms = {
@@ -365,7 +366,9 @@ def _target_profile(
         "target_ref": target.get("target_ref"), "kind": target.get("kind"),
         "display_name": target.get("display_name") or (entity_names[0] if entity_names else "Устройство"),
         "names": names, "aliases": aliases, "entity_names": entity_names,
-        "entity_aliases": entity_aliases, "areas": area_names, "area_aliases": area_aliases,
+        "entity_aliases": entity_aliases, "areas": area_names or inferred_areas,
+        "registry_areas": area_names, "inferred_areas": inferred_areas,
+        "area_aliases": area_aliases,
         "domains": domains, "device_classes": classes, "platforms": platforms,
         "manufacturer_model": [
             str(value) for value in (target.get("manufacturer"), target.get("model")) if isinstance(value, str)
@@ -468,6 +471,8 @@ def _action_entity_profiles(
                 "entity_names": list(parent["names"]),
                 "entity_aliases": list(parent["aliases"]),
                 "areas": explicit_areas,
+                "registry_areas": list(parent["registry_areas"]),
+                "inferred_areas": [] if parent["registry_areas"] else explicit_areas,
                 "area_aliases": list(parent["area_aliases"]),
                 "domains": {domain},
                 "safety_domains": set(parent["domains"]),
@@ -632,7 +637,9 @@ def resolve_targets(
         concepts = _weak_type_concepts(query)
     area_type = [
         profile for profile in profiles
-        if any(
+        # A shadow action already has a bounded light/switch projection. A read
+        # needs type/measurement evidence, not just generic status/power.
+        if (action_entities or concepts or feature not in {"status", "power", "unknown"}) and any(
             _phrase_present(value, query) or _weak_phrase_present(value, query)
             for value in [*profile["areas"], *profile["area_aliases"]] if value
         )
@@ -1020,7 +1027,9 @@ def target_context(inventory: Mapping[str, Any], target_ref: str) -> dict[str, A
     profile = _target_profile(target, entities, areas, integrations)
     return {
         "target_ref": target_ref, "kind": profile["kind"],
-        "display_name": profile["display_name"], "areas": list(profile["areas"]),
+        "display_name": profile["display_name"],
+        "registry_areas": list(profile["registry_areas"]),
+        "inferred_areas": list(profile["inferred_areas"]),
     }
 
 

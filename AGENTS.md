@@ -33,6 +33,8 @@ shadow-планы для безопасных команд. Production стро�
 - Комнату без registry binding разрешено выводить только из human metadata и
   общей room-онтологии при единственном совпадении; multi-room evidence всегда
   остаётся неоднозначным.
+- Registry и inferred areas должны быть явно разделены в resolver context.
+  `ReadReceipt.areas` содержит только HA registry bindings, не inferred rooms.
 - Не добавлять action execution, HA POST/service calls, vacuum/button/appliance/
   lock/climate/script plans, recovery, scheduler, reminders, learning,
   onboarding, diagnostics automation или persistent memory.

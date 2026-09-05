@@ -148,6 +148,8 @@ def _expected_receipts(
         target = target_nodes.get(target_ref, {})
         target_kind = str(target.get("kind") or "logical")
         target_label = _safe_text(target.get("display_name"), "Устройство")
+        # Independent HA provenance: inferred resolver rooms are not registry
+        # bindings and must never enter the expected factual receipt.
         areas = tuple(
             safe for ref in target.get("area_refs", []) if ref in area_names
             for safe in [_safe_text(area_names[ref], "")] if safe

@@ -5,6 +5,13 @@ Stage 72 shadow action planning. Реальное управление, Hermes g
 MCP transport, learning, recovery, scheduler, reminders и persistent dialog
 memory отсутствуют.
 
+Stage 72 активирован в production в SHADOW mode 2026-09-05 из
+`7eb0a9fd8b03cf481e58aff06b78830b6658a868` (safety tag
+`stage72-complete-7eb0a9f`). Stage 73 не начат. Текущее состояние приёмки
+после promotion и cleanup указано в `CURRENT-GOAL.md`.
+Read cleanup разделяет registry и inferred rooms; `ReadReceipt` содержит только
+registry area. Разбор исходных failures и повторная приёмка также сохранены там.
+
 ## Единственный путь реплики
 
 `Web или Alice → owner_chat.py → bounded_ha_agent.py →
@@ -53,11 +60,11 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 Stage 72 live acceptance использует production metadata и локальную модель, но
 физически блокирует HA POST. Evidence report:
 [`reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md`](reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md).
-Финальная независимая real-home acceptance — `FAIL` (56/60; safety и latency
+Историческая независимая real-home acceptance до correction — `FAIL` (56/60; safety и latency
 gates зелёные):
 [`reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md`](reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md).
-Stage 72 correction: real-home 60/60 и новый natural-language corpus 100/100,
-без HA POST и deployment:
+Stage 72 correction до promotion: real-home 60/60 и новый natural-language
+corpus 100/100, без HA POST; deployment на момент этого отчёта не выполнялся:
 [`reports/STAGE-72-CORRECTION-2026-09-04.md`](reports/STAGE-72-CORRECTION-2026-09-04.md).
 Stage 72 room/type capability closeout: 42/42, 10 real targets,
 `REAL_ROOM_TYPE_PLANS=21`, HA POST/service calls 0:

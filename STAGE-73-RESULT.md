@@ -6,7 +6,115 @@
 Stage73 COMPLETE. Remote SHA первоначальной публикации кода подтверждён:
 `284b99a4619ec4153cb0b7c5a4381b07cec1b7bc`; main не изменён.
 
-## Последняя свежая read/shadow-проверка — 9 сентября, после восстановления HA
+## Nullable registry area — разрешённое изменение Phase A, 9 сентября
+
+Code commit: `5b359032ab80c97b3417a6b01cfca16684ca63bb`.
+Parent: `aded6891032e81112ea9e8ce5d3320c15f803e8b`; Stage72 base/main:
+`8bc3b480a9fa2414dfe8680233db5b23ee0b54fe`.
+Scope: разрешение владельца «разрешить хранить registry_area=null», не Phase B.
+Исходники проверялись перед commit; точный digest scripts/tests до/после:
+`75c5d8fbf52d86eff26d95d7cc50af81541d885cb6465b1a925f709eaa17d66b`.
+HEAD в fresh-run evidence отражает исходный parent; digest соответствует code commit выше.
+
+Раньше canary authority требовала non-null registry room. Теперь разрешена
+закрытая пара `registry_area=null` / `registry_area_ref=null` с обязательным
+отдельным `owner_area`. Bound records требуют `owner_area=null`. Это exact
+absence, не wildcard: missing fields, dangling area reference и неуспешное
+чтение отклоняются. Единственный HomeGraph хранит только дополнительный bool
+metadata `registry_area_unassigned`. Owner room не записывается в HA/HomeGraph
+или ReadReceipt, не участвует в resolver и не устраняет ambiguity.
+Plan запечатывает registry/owner provenance; fresh binding даже в той же комнате
+инвалидирует plan. Prepared runner/oracle проверяют тот же контракт независимо;
+expected room берётся из заранее reviewed manifest, не из ответа production.
+
+Production source changes, lines before/after:
+
+| File | Before / after |
+| --- | --- |
+| scripts/canary_contract.py | 294 / 322 |
+| scripts/canary_write_adapter.py | 340 / 341 |
+| scripts/home_assistant_inventory.py | 595 / 601 |
+
+Все production .py/.sh: 7368 → 7403 (+35). Файлы production не добавлялись
+и не удалялись; второй graph/resolver/adapter не создавался. Дополнительные
+строки обеспечивают различение explicit-null и unknown и sealed provenance.
+Tests: новый nullable suite (14 tests), обновлены fixtures, independent oracle
+и подготовленный live runner; документация AGENTS/ARCHITECTURE/SECURITY обновлена.
+
+Проверки этого checkpoint (fresh run 10:48–10:56 UTC):
+
+| Проверка | Результат | P50 / P95 / P99, s |
+| --- | --- | --- |
+| Full repository | 159/159 PASS, 0 failures/errors/skips, 64.1868 s | — |
+| Отдельный fake security | 49/49 PASS | fake verified: 0.3481 / 0.4199 / 0.4259 |
+| Stage71 fresh live/oracle | PASS, 40 blind / 76 turns, 2 skips | 0.7734 / 0.9023 / 1.3187 |
+| Stage72 natural + real Qwen | 100/100 | 0.0234 / 0.1313 / 2.2010 |
+| Stage72 fresh room/type | 42/42, 21 room/type plans | 1.5584 / 1.7987 / 1.8481 |
+| Stage73 fresh frozen shadow | 170/205, 35 missed expected plans | 1.4923 / 2.0484 / 2.3449 |
+| Stage73 fresh owner draft | 24/25, R20 clarification | 1.5488 / 2.1476 / 2.2645 |
+| Nullable authority diagnostic, 5 выбранных canaries | 5/5 contract checks, не owner acceptance | 2.6505 / 2.7837 / 2.8056 |
+
+В новом suite проверены null/missing/malformed metadata, обе provenance,
+owner/config/plan tampering, появление area до и после fake POST, bound→null,
+конфликт requested room, дублирующиеся physical names, independent registry
+oracle, fake verification/rollback/duplicate и полный fake conversational runner.
+Настоящих HA обращений в repository suite: 0. Отдельный fake suite измерил
+27 FAKE_POST / 99 FAKE_GET; это не реальные service calls и не live cycles.
+
+Fresh nullable diagnostic независимо подтвердил explicit registry absence у
+всех пяти owner-selected targets. Временные private records существовали только
+в памяти, CONTROL_ENABLED=CANARY_LIVE_ENABLED=false, owner approval отсутствует.
+«Свет» / «коридор» / «ночник Подсветка» / «Вытяжка на кухне»: 4 правильных
+sealed plans, 4 receipts `not_sent`; реле вентилятора tuya_local — корректная
+clarification по неоднозначной человеческой фразе. Private target identity
+сравнена с заранее закреплённой owner selection, не с production resolver.
+Graph не изменён; этот diagnostic: HA_GET=1, REGISTRY_READS=6,
+HA_POST=SERVICE_CALLS=BLOCKED=0. P95 2.7837 s превышает 2.5 s и не скрывается;
+5/5 означает только семантический контракт, не latency gate/Phase A acceptance.
+
+N04 в полном новом natural run прошёл; предыдущий 99/100 сохранён без правки.
+Модель/настройки не менялись, причина прежнего timeout не объявлена исправленной.
+Natural MODEL_CALLS=5; 72 deterministic / 4 model-assisted resolutions.
+Stage71 WRONG_TARGET=INVENTED_FACTS=LOST_REQUESTED_VALUES=0, 30 physical +
+10 logical, 215/215 enabled current entities представлены. Old inventory values=0.
+Все frozen manifest hashes сохранены. Live runner CLI не запускался,
+registry/production/services не менялись, action credential/allowlist не установлены.
+LIVE_TARGETS=LIVE_CYCLES=HA_POST=SERVICE_CALLS=0; live receipt/rollback latency
+не измерялась. Phase B и Stage74 не начинались.
+
+Stage73 failures не изменились: S041–S050, S091–S100, S121–S125, S166–S175 —
+35 relay clarifications; R20 «включи вытяжку» — clarification. Ни один expected
+result не исправлен после ответа. Во всех action suites WRONG_TARGET,
+CROSS_ROOM_TARGET, WRONG_ACTION, AMBIGUOUS_PLAN, FORBIDDEN_PLAN,
+FALSE_ACTION_INTENT=0. MISSED_EXPECTED_PLAN=35 (shadow) и 1 (owner draft).
+General shadow suites используют фактическую OFF-конфигурацию с 0 records,
+поэтому CANARY_SEALED_PLANS=0 там не противоречит 4 canary plans в отдельном
+nullable diagnostic с явно указанным in-memory draft. Relay allowance не
+использовался для тайного выбора между двумя physical targets.
+
+Общий fresh-suite guard: HA_GET=68, REGISTRY_READS=13,
+HA_POST=SERVICE_CALLS=BLOCKED=0. Отдельный nullable diagnostic добавил 1 GET
+и 6 registry-list reads, без writes. GET `/api/ps` после проверки подтвердил
+qwen3.5:2b-q4_K_M, digest
+`124a03c347777e8e4e5955c33610ae01d9d90d8c2a718bfba069c498d5c7f3c9`,
+context=8192, size=1696574994, size_vram=0; offloaded layers не измерены.
+Никаких изменений модели, настройки offload или сервиса не было.
+
+STATUS = `FAIL / NOT_READY` для всей Phase A;
+LIVE_STATUS = `INCOMPLETE_LIVE_APPROVAL_REQUIRED`.
+Nullable-contract blocker снят, но обязательный reviewed/green canary corpus
+и Phase B live evidence отсутствуют. Все mandatory live tests, >=60 cycles,
+физический rollback и live latency пропущены из-за отсутствия отдельного
+разрешения; нулевые live counters не являются доказательством этих gates.
+Публикация незавершённой работы — по предыдущему прямому запросу владельца,
+только в Stage73 ветку, не main/promotion/deployment.
+
+Evidence: [full fresh recheck](reports/stage73-fresh-recheck-2026-09-09-nullable.json),
+[nullable diagnostic](reports/stage73-nullable-bindings-2026-09-09-nullable.json),
+[repository](reports/stage73-repository-2026-09-09-nullable.json),
+[fake security](reports/stage73-fake-endpoint-2026-09-09-nullable.json).
+
+## Предыдущая свежая read/shadow-проверка — 9 сентября, после восстановления HA
 
 STATUS = `FAIL / NOT_READY`; LIVE_STATUS = `INCOMPLETE_LIVE_APPROVAL_REQUIRED`.
 Source commit: `284b99a4619ec4153cb0b7c5a4381b07cec1b7bc`;

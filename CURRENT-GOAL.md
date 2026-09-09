@@ -12,7 +12,34 @@ Live status: `INCOMPLETE_LIVE_APPROVAL_REQUIRED`. Stage74 не начат.
 `8bc3b480a9fa2414dfe8680233db5b23ee0b54fe`. Прежний approval blocker снялся;
 публикация не означает deploy или прохождение Phase A.
 
-## Свежая повторная проверка 2026-09-09, 10:05–10:14 UTC
+## Последнее изменение: nullable registry area, 2026-09-09
+
+Владелец отдельно разрешил хранить `registry_area=null`. Code commit:
+`5b359032ab80c97b3417a6b01cfca16684ca63bb` (parent `aded689`).
+Контракт принимает только explicit absence с отдельной `owner_area`; missing
+metadata не становится null. Fresh назначение комнаты инвалидирует прежний plan.
+Registry не менялся, allowlist не участвует в resolver и не снимает ambiguity.
+Две provenance запечатаны в plan, независимый oracle проверяет raw registry nulls.
+
+- Repository 159/159 PASS; новые nullable tests 14/14; fake security 49/49.
+- Fresh Stage71 live/oracle PASS, wrong/invented/lost=0, 215/215 represented.
+- Fresh Stage72 natural 100/100; room/type 42/42. Прежний N04 timeout сохранён
+  в историческом evidence, его первопричина не объявлена исправленной.
+- Nullable diagnostic: 5/5 owner-selected private bindings валидны; 4 sealed
+  plans + `not_sent`, relay clarification. P95 2.7837 s — не latency PASS.
+  Private allowlist только в памяти; installed records=0, оба flags OFF.
+- Stage73 shadow повторно 170/205: 35 настоящих relay clarifications против
+  старых expected plans. Frozen expectations не переписаны.
+- Owner draft повторно 24/25: R20 «включи вытяжку» остаётся clarification.
+  Все wrong-target/room/ambiguous-plan/forbidden-plan/false-action counters=0.
+  Fresh-suite network: 68 GET / 13 registry reads, никаких POST/service calls.
+
+Null-contract blocker снят, но Phase A остаётся FAIL / NOT_READY: нет полностью
+reviewed и green canary corpus. Phase B не разрешена; HA_POST=SERVICE_CALLS=0,
+live cycles=0, control/config/action credential не установлены. Main не меняется.
+Полное evidence и последние percentiles: STAGE-73-RESULT.md, nullable checkpoint.
+
+## Предыдущая свежая проверка 2026-09-09, 10:05–10:14 UTC
 
 HA снова доступен: TCP из Windows/WSL, authenticated GET и три registry-list
 команды прошли. Ничего в HA/registry/сети не менялось и не перезапускалось.

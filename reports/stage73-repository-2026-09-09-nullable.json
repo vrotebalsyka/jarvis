@@ -1,0 +1,13 @@
+{
+  "status": "pass",
+  "source_digest": "75c5d8fbf52d86eff26d95d7cc50af81541d885cb6465b1a925f709eaa17d66b",
+  "tests": 159,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "failed_tests": [],
+  "elapsed_s": 64.1868,
+  "actual_network_attempts": 0,
+  "HA_POST": 0,
+  "source_unchanged": true
+}

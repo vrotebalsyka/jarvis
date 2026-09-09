@@ -1,5 +1,16 @@
 # Jarvis — выполненная работа и проверка скриншотов, 9 сентября 2026
 
+Последнее дополнение — owner-approved nullable registry contract, code commit
+`5b359032ab80c97b3417a6b01cfca16684ca63bb`. `registry_area=null` теперь хранится
+отдельно от owner room; это не wildcard и не разрешение менять HA registry.
+Repository 159/159, Stage71 PASS, Stage72 natural 100/100, room/type 42/42.
+Четыре выбранные однозначные цели дают sealed canary plans в OFF-only diagnostic;
+реле остаётся clarification. Старый frozen Stage73 shadow по-прежнему 170/205.
+Phase A не green, Phase B не разрешена, реальные HA_POST/service calls=0.
+Свежие числа и ограничения — в начале [STAGE-73-RESULT](../STAGE-73-RESULT.md).
+
+Предыдущее дополнение (до nullable contract):
+
 Дополнение после публикации: HA восстановил доступность без наших изменений.
 Свежий повтор: Stage71 PASS, Stage72 natural **99/100** (N04 timeout), room/type
 **42/42**, Stage73 shadow **170/205**, owner-review **24/25**. HA_POST=SERVICE_CALLS=0.

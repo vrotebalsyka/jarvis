@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "pass",
+  "read_only": true,
+  "ha_service_calls": 0,
+  "wrong_target": 0,
+  "invented_facts": 0,
+  "lost_requested_values": 0,
+  "persistent_inventory_current_values": 0,
+  "model_generated_entity_ids": 0,
+  "failures": 0,
+  "skips": 2,
+  "blind_corpus_count": 40,
+  "blind_corpus_sha256": "4ff8119abb39dd0e33b17c239699f8df15f372f414aa743d256c234eab602376",
+  "inventory_schema": 5,
+  "inventory_entities": 257,
+  "physical_nodes": 51,
+  "logical_nodes": 37,
+  "area_nodes": 8,
+  "integration_nodes": 28,
+  "enabled_current_entities": 215,
+  "represented_enabled_current_entities": 215,
+  "physical_devices_read": 30,
+  "logical_entities_read": 10,
+  "deterministic_latency": {
+    "n": 76,
+    "p50_s": 0.7734,
+    "p95_s": 0.9023,
+    "p99_s": 1.3187
+  },
+  "outer_instrumented_network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "HA_GET": 64,
+    "REGISTRY_READS": 4,
+    "BLOCKED": 0
+  }
+}

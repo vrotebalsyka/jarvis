@@ -7,8 +7,42 @@ Live status: `INCOMPLETE_LIVE_APPROVAL_REQUIRED`. Stage74 не начат.
 Владелец 2026-09-09 отдельно запросил сохранение и GitHub-публикацию текущей
 незавершённой работы и отчётов. Это не green gate, promotion или Phase B approval.
 Сводка и разбор четырёх скриншотов: reports/WORK-REPORT-2026-09-09.md.
-Remote-проверка заблокирована approval layer: `workspace is out of credits`.
-Push и актуальный remote SHA не подтверждены. Main не изменяется.
+Первоначальная публикация выполнена и remote SHA проверен: stage73-canary-live-control =
+`284b99a4619ec4153cb0b7c5a4381b07cec1b7bc`. GitHub main остался
+`8bc3b480a9fa2414dfe8680233db5b23ee0b54fe`. Прежний approval blocker снялся;
+публикация не означает deploy или прохождение Phase A.
+
+## Свежая повторная проверка 2026-09-09, 10:05–10:14 UTC
+
+HA снова доступен: TCP из Windows/WSL, authenticated GET и три registry-list
+команды прошли. Ничего в HA/registry/сети не менялось и не перезапускалось.
+Причина прежнего timeout не установлена: доступ восстановился без наших изменений.
+Проверен source commit `284b99a4619ec4153cb0b7c5a4381b07cec1b7bc`,
+source digest до/после совпал. Production не переустанавливался.
+
+- Stage71 live/oracle PASS: wrong/invented/lost=0, 30 physical + 10 logical,
+  215/215 enabled current entities представлены, 2 skips; P95 0.8631 s.
+- Stage72 natural **99/100**, N04 error через 10.016 s; model calls=5.
+  Диагностический повтор только N04 позднее дал правильный plan за 2.4361 s;
+  он не заменяет полный результат и не доказывает устранение причины задержки.
+- Stage72 room/type **42/42**, 21 room/type plans, P95 1.6114 s.
+- Stage73 fresh shadow **170/205**, 35 relay clarifications против прежних
+  expected plans; P95 2.0958 s. Frozen expectations не менялись.
+- Owner-review fresh **24/25**, 17 plans + 8 clarifications, R20 unchanged.
+  HTML обновлён на свежий источник; owner-reviewed/live-authorized остаются false.
+- Repository suite **145/145 PASS**, 52.5796 s, skips=0; actual HA network attempts=0.
+- Fake endpoint/security **49/49 PASS**, 18.151 s: fake POST=27, fake GET=99,
+  реальные HA_POST=SERVICE_CALLS=0. Это не live devices/receipts.
+
+Все measured wrong-target/room/action/ambiguous-plan/forbidden-plan/false-action
+counters = 0. Combined instrumented network: HA_GET=68, REGISTRY_READS=13,
+HA_POST=SERVICE_CALLS=BLOCKED=0. Отдельный N04 повтор: HA requests=0.
+Allowlist records=0, flags OFF, registry bindings отсутствуют у пяти canaries,
+sealed canary plans=0. Phase A по-прежнему FAIL / NOT_READY, Phase B не разрешена.
+Evidence: `reports/stage73-fresh-recheck-2026-09-09-restored.json` и связанные
+per-suite JSON. Следующие разделы — исторические checkpoints, не текущий HA health.
+
+## История до свежего повторения
 
 Владелец выбрал для подготовки пять targets: switch «Свет» (physical «кабинет»),
 switch «коридор», light «ночник Подсветка», switch «Вытяжка на кухне» и switch

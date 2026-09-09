@@ -1,0 +1,1594 @@
+{
+  "schema_version": 1,
+  "status": "fail",
+  "mode": "shadow",
+  "manifest_count": 100,
+  "manifest_sha256": "c7481eab286f10adb4abde4c8ea7577c2053c81dadf60ade03be7ca51896524a",
+  "passed": 99,
+  "failures": 1,
+  "failed_case_ids": [
+    "N04"
+  ],
+  "wrong_target": 0,
+  "cross_room_target": 0,
+  "ambiguous_plan": 0,
+  "forbidden_plan": 0,
+  "missed_expected_plan": 1,
+  "false_action_intent": 0,
+  "wrong_action": 0,
+  "ha_post": 0,
+  "ha_service_paths": 0,
+  "ha_reads": 0,
+  "service_calls": 0,
+  "model_calls": 5,
+  "deterministic_resolutions": 72,
+  "model_assisted_resolutions": 3,
+  "model_prompt_technical_ids": 0,
+  "network_requests": 10,
+  "latency": {
+    "n": 100,
+    "p50_s": 0.0205,
+    "p95_s": 0.1487,
+    "p99_s": 6.4742,
+    "mean_s": 0.2496
+  },
+  "cases": [
+    {
+      "case_id": "D01",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0218,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D02",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0207,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D03",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0199,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D04",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0221,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D05",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0188,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D06",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0206,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D07",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0167,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D08",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0188,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D09",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0187,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D10",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0185,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D11",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0191,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D12",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0206,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D13",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0235,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D14",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0196,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D15",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0185,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D16",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0186,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D17",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле вентилятора",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0158,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D18",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле вентилятора",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0142,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D19",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле вентилятора",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.017,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D20",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле вентилятора",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0166,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D21",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле стола",
+      "selected_area": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0141,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D22",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле стола",
+      "selected_area": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0141,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D23",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Настольная лампа кабинета",
+      "selected_area": [
+        "Кабинет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0363,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D24",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Настольная лампа кабинета",
+      "selected_area": [
+        "Кабинет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0345,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D25",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кабинета",
+      "selected_area": [
+        "Кабинет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.025,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D26",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кабинета",
+      "selected_area": [
+        "Кабинет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0247,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D27",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет ванной",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.023,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D28",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет ванной",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0253,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D29",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Зеркало ванной",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0224,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D30",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Зеркало ванной",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0291,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D31",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0195,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D32",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0198,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D33",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0215,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D34",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0201,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "D35",
+      "category": "natural_deterministic",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0211,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N01",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0289,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N02",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0231,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N03",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0267,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N04",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "error",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 10.016,
+      "pass": false,
+      "error": "OwnerChatError: read-only conversational core is unavailable"
+    },
+    {
+      "case_id": "N05",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0205,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N06",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0409,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N07",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0236,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N08",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0384,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N09",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0313,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N10",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0349,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N11",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0258,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N12",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.018,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N13",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0233,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N14",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": true,
+      "latency_s": 6.4384,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N15",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0184,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N16",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0359,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N17",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0198,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N18",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.03,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N19",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0295,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N20",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0283,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N21",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0217,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N22",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0204,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N23",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0329,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N24",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.016,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N25",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0207,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N26",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": true,
+      "latency_s": 2.153,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N27",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0323,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N28",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0284,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N29",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0342,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "N30",
+      "category": "natural_model",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.02,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X01",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0032,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X02",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0066,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X03",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0062,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X04",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0037,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X05",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0046,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X06",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0064,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X07",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0054,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X08",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0094,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X09",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.006,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "X10",
+      "category": "negation",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0052,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A01",
+      "category": "ambiguity",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "свет ванной",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": true,
+      "latency_s": 2.0688,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A02",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0355,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A03",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0245,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A04",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0284,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A05",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0477,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A06",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0353,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A07",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0392,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A08",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0274,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A09",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0271,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A10",
+      "category": "ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": true,
+      "latency_s": 2.3119,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "F01",
+      "category": "forbidden",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0049,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "F02",
+      "category": "forbidden",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0065,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "F03",
+      "category": "forbidden",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0299,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "F04",
+      "category": "forbidden",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0048,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "F05",
+      "category": "forbidden",
+      "expected_outcome": "deny",
+      "actual_outcome": "deny",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "model_assisted": false,
+      "latency_s": 0.0073,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C01",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0183,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C02",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет туалета",
+      "selected_area": [
+        "Туалет"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0098,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C03",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0188,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C04",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Ночник коридора",
+      "selected_area": [
+        "Коридор"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0109,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C05",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле вентилятора",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0137,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C06",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Реле вентилятора",
+      "selected_area": [
+        "Ванная"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0097,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C07",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0199,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C08",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет кухни",
+      "selected_area": [
+        "Кухня"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0101,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C09",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "model_assisted": false,
+      "latency_s": 0.0196,
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "C10",
+      "category": "follow_up",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Основной свет входной зоны",
+      "selected_area": [
+        "Входная зона"
+      ],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "model_assisted": false,
+      "latency_s": 0.0106,
+      "pass": true,
+      "error": null
+    }
+  ],
+  "outer_instrumented_network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "HA_GET": 0,
+    "REGISTRY_READS": 0,
+    "BLOCKED": 0
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "scope": "single_case_diagnostic_fixture_real_model",
+  "replaces_corpus": false,
+  "started_at_utc": "2026-09-09T10:15:52.066331+00:00",
+  "case_id": "N04",
+  "utterance": "Хотелось бы света в туалете",
+  "manifest_sha256": "c7481eab286f10adb4abde4c8ea7577c2053c81dadf60ade03be7ca51896524a",
+  "actual_outcome": "plan",
+  "selected_human_target": "Основной свет туалета",
+  "selected_areas": [
+    "Туалет"
+  ],
+  "selected_action": "turn_on",
+  "matches_frozen_expectation": true,
+  "wall_s": 2.4361,
+  "model_calls": [
+    {
+      "timeout_s": 10.0,
+      "total_duration": 2391778702,
+      "load_duration": 325502589,
+      "prompt_eval_duration": 1157640000,
+      "eval_duration": 898635000,
+      "prompt_eval_count": 163,
+      "eval_count": 20,
+      "done_reason": "stop",
+      "wall_s": 2.394
+    }
+  ],
+  "network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "HA_GET": 0,
+    "REGISTRY_READS": 0,
+    "BLOCKED": 0
+  }
+}

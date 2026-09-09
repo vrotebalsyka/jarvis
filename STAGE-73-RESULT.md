@@ -2,10 +2,104 @@
 
 Сводный отчёт владельцу, включая четыре скриншота 9 сентября и фактические
 ограничения публикации: [WORK-REPORT-2026-09-09](reports/WORK-REPORT-2026-09-09.md).
-Это подготовка публикации промежуточной работы по прямому запросу владельца,
-не объявление Stage73 COMPLETE. Сетевой push пока не подтверждён.
+Промежуточная работа опубликована по прямому запросу владельца, не как
+Stage73 COMPLETE. Remote SHA первоначальной публикации кода подтверждён:
+`284b99a4619ec4153cb0b7c5a4381b07cec1b7bc`; main не изменён.
 
-## Текущий результат после отказа изменять registry rooms
+## Последняя свежая read/shadow-проверка — 9 сентября, после восстановления HA
+
+STATUS = `FAIL / NOT_READY`; LIVE_STATUS = `INCOMPLETE_LIVE_APPROVAL_REQUIRED`.
+Source commit: `284b99a4619ec4153cb0b7c5a4381b07cec1b7bc`;
+base: `8bc3b480a9fa2414dfe8680233db5b23ee0b54fe`. Source digest до/после:
+`fd9cfb063244e7e040d6d0e6f82a2d11c9bf7033c16ee717e5798061cf8342f3`.
+Этот повтор не менял production код, архитектуру, модель или frozen expectations.
+Production files added/changed = 0, production lines before/after = 7368/7368
+в ветке; установленный runtime по-прежнему отдельный Stage72 + два hotfix.
+
+HA снова доступен без выполненных нами изменений: Windows TCP 0.2653 s,
+ICMP 53 ms; WSL TCP 0.0115 s. Authenticated GET и registry-list прошли.
+Прежняя причина timeout не установлена: восстановление доступности не доказывает
+ни падение Core, ни исправление firewall. HA, registry и services не перезапускались.
+
+| Проверка | Результат | P50 / P95 / P99, s |
+| --- | --- | --- |
+| Repository unittest | **145/145 PASS**, skips=0, 52.5796 s | — |
+| Fake endpoint/security | **49/49 PASS**, 18.151 s | fake verified: 0.5087 / 0.5789 / 0.6205 |
+| Stage71 live/oracle | PASS, 40 blind / 76 turns, 2 skips | 0.7369 / 0.8631 / 1.2515 |
+| Stage72 natural, frozen fixture + real Qwen | **99/100**, N04 error | 0.0205 / 0.1487 / 6.4742 |
+| Stage72 real-home room/type, свежая metadata | **42/42**, 10 targets, 21 room/type plans | 1.5189 / 1.6114 / 1.6239 |
+| Stage73 real-home shadow, свежая metadata | **170/205**, 35 missed expected plans | 1.5502 / 2.0958 / 2.4702 |
+| Owner-review draft, свежая metadata | **24/25**, 17 plans + 8 clarifications | 1.5618 / 2.1558 / 2.2543 |
+
+Stage71: WRONG_TARGET=INVENTED_FACTS=LOST_REQUESTED_VALUES=0; прочитаны
+30 physical + 10 logical, представлены 215/215 enabled current entities.
+Graph v5: 257 entities, 51 physical, 37 logical, 8 areas, 28 integrations.
+Persistent inventory current values=0, model-generated IDs=0.
+Общее внешнее инструментирование пяти suites и initial fresh metadata:
+**HA_GET=68, REGISTRY_READS=13, HA_POST=0, SERVICE_CALLS=0, BLOCKED=0**.
+HTTP POST/service paths и write WebSocket блокировались до отправки.
+
+Repository suite дополнительно запрещала соединения с реальным HA endpoint;
+real network attempts=0. Отдельный fake run измерил FAKE_HA_POST=27,
+FAKE_HA_GET=99, реальные HA_POST=SERVICE_CALLS=0. Его injected-fault receipts:
+verified=20, rejected=34, accepted_unverified=8, failed=6, not_sent=3,
+delivery_unknown=3. Fake latency n=12: POST 0.0009/0.0374/0.0722 s;
+verification 0.2024/0.2034/0.2034 s. Эти числа не являются live verification
+или rollback статистикой. [Repository evidence](reports/stage73-repository-2026-09-09-restored.json),
+[fake evidence](reports/stage73-fake-endpoint-2026-09-09-restored.json).
+
+Новые/сохранившиеся failures, без изменения expectations:
+
+- N04 «Хотелось бы света в туалете»: expected plan, actual OwnerChatError
+  через 10.016 s, MISSED_EXPECTED_PLAN=1. В журнале модели соответствующий
+  generate request имеет HTTP 499 / 10.1515 s; это согласуется с клиентским
+  timeout, а не неверным выбором устройства. Причина задержки не установлена.
+  Один отдельный диагностический повтор через настоящий owner_chat/process_turn
+  дал правильный plan за 2.4361 s (real Qwen 2.3940 s). Он **не заменяет 99/100**
+  и не доказывает исправление. Timeout, модель и её настройки не менялись.
+- Stage73 S041–S050, S091–S100, S121–S125, S166–S175: все 35 actual outcomes —
+  clarification для «реле вентилятора», frozen expected outcomes — plan.
+  Owner-approved выбор tuya_local для будущего allowlist не должен тайно
+  разрешать неоднозначную человеческую команду. Это остаётся не green gate.
+- Owner-review R20 «включи вытяжку»: actual clarification против draft plan.
+  Все 25 строк совпали с прежним snapshot по исходу, target, комнате, действию,
+  intent и candidates. HTML теперь ссылается на fresh evidence. Draft не reviewed.
+
+Все measured WRONG_TARGET, CROSS_ROOM_TARGET, WRONG_ACTION, AMBIGUOUS_PLAN,
+FALSE_ACTION_INTENT и FORBIDDEN_PLAN в этих action runs равны 0.
+Stage72 natural: 5 real model calls, 72 deterministic / 3 assisted resolutions.
+Stage73 shadow: 140 deterministic plans, 0 model calls, 0 sealed canary plans;
+модель не вызывалась искусственно. Пять выбранных canaries сохраняют отсутствующие
+registry bindings. Owner-review считает 4 expected-plan bindings, потому что
+все relay строки этого отдельного draft ожидают clarification; это не утверждение,
+что пятое выбранное устройство исчезло.
+
+Runtime read-only check: оба hotfix hashes совпали с предыдущими; три canary
+module files и `/etc/home-butler/canary.json` отсутствуют. Control flags default OFF,
+owner allowlist records=0. Local chat и Alice service active/running; отдельная
+end-to-end публичная Alice acceptance в этом повторе не выполнялась.
+GET model /api/ps: qwen3.5:2b-q4_K_M, digest
+`124a03c347777e8e4e5955c33610ae01d9d90d8c2a718bfba069c498d5c7f3c9`, context 8192,
+size_vram=0. Offloaded layer count не измерен.
+
+LIVE_TARGETS=LIVE_CYCLES=0. Live receipts, verification/rollback statistics и
+live latency не измерены. Phase B runner не запускался. Все live matrix cases
+пропущены по отсутствию отдельного owner approval, не объявлены PASS.
+Ограничение nullable registry area в canary contract остаётся; registry не меняли
+ради тестов. ≥200 shadow PASS и 100/100 natural не достигнуты. Stage74 не начат.
+
+Evidence: [aggregate](reports/stage73-fresh-recheck-2026-09-09-restored.json),
+[Stage71](reports/stage73-stage71_live_oracle-2026-09-09-restored.json),
+[natural](reports/stage73-stage72_natural-2026-09-09-restored.json),
+[room/type](reports/stage73-stage72_room_type-2026-09-09-restored.json),
+[205 shadow traces](reports/stage73-stage73_shadow-2026-09-09-restored.json),
+[owner-review](reports/stage73-stage73_owner_review-2026-09-09-restored.json),
+[N04 diagnostic](reports/stage73-n04-diagnostic-2026-09-09-restored.json).
+One-off read-only orchestration сохранена в reports/stage73-fresh-recheck-2026-09-09.py;
+это test artifact, не новый production path. Private metadata временно сохранялась
+в изолированном 0700 temp directory и удалена после чтения; в Git не включалась.
+
+## Checkpoint до публикации и повторной свежей проверки
 
 STATUS = `NOT_READY`; LIVE_STATUS = `INCOMPLETE_LIVE_APPROVAL_REQUIRED`.
 Registry rooms и сеть не менялись. Phase B/Stage74 не начаты.

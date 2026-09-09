@@ -1,0 +1,42 @@
+{
+  "status": "pass",
+  "scope": "offline_fake_only",
+  "tests": 49,
+  "failures": 0,
+  "errors": 0,
+  "network": {
+    "FAKE_HA_POST": 27,
+    "FAKE_HA_GET": 99,
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0
+  },
+  "receipt_statuses_including_injected_faults": {
+    "verified": 20,
+    "rejected": 34,
+    "accepted_unverified": 8,
+    "failed": 6,
+    "not_sent": 3,
+    "delivery_unknown": 3
+  },
+  "latency_fake_only": {
+    "post": {
+      "n": 12,
+      "p50_s": 0.0009,
+      "p95_s": 0.0374,
+      "p99_s": 0.0722
+    },
+    "verification": {
+      "n": 12,
+      "p50_s": 0.2024,
+      "p95_s": 0.2034,
+      "p99_s": 0.2034
+    },
+    "verified_total": {
+      "n": 12,
+      "p50_s": 0.5087,
+      "p95_s": 0.5789,
+      "p99_s": 0.6205
+    }
+  },
+  "not_real_home_acceptance": true
+}

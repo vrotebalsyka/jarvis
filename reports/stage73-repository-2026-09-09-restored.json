@@ -1,0 +1,14 @@
+{
+  "status": "pass",
+  "tests": 145,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "duration_s": 52.5796,
+  "network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "REAL_HA_NETWORK_ATTEMPTS": 0
+  },
+  "failed_tests": []
+}

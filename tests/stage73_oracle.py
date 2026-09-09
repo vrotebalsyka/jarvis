@@ -116,7 +116,8 @@ def read_states(host: str, port: int, token: str, private_entities: Mapping[str,
         connection.close()
 
 
-def read_bindings(host: str, port: int, token: str, private_entities: Mapping[str, str]) -> dict[str, str]:
+def read_bindings(host: str, port: int, token: str, private_entities: Mapping[str, str],
+                  expected_registry_areas: Mapping[str, str | None] | None = None) -> dict[str, str]:
     """Independent registry assertions, not a HomeGraph or a target resolver."""
     import websocket
     connection = None
@@ -147,6 +148,16 @@ def read_bindings(host: str, port: int, token: str, private_entities: Mapping[st
                 raise ValueError("oracle_registry_failed")
             area_id = entity.get("area_id") or parents[0].get("area_id")
             area = [a for a in areas if a.get("area_id") == area_id]
+            if expected_registry_areas is not None:
+                if label not in expected_registry_areas:
+                    raise ValueError("oracle_registry_failed")
+                expected = expected_registry_areas[label]
+                if expected is None:
+                    if any("area_id" not in row or row["area_id"] is not None for row in (entity, parents[0])):
+                        raise ValueError("oracle_registry_failed")
+                elif (not isinstance(expected, str) or not expected.strip() or not isinstance(area_id, str)
+                      or len(area) != 1 or area[0].get("name") != expected):
+                    raise ValueError("oracle_registry_failed")
             observed = [entity.get(k) for k in ("id", "entity_id", "device_id", "area_id", "platform", "unique_id")]
             observed += [parents[0].get("area_id"), area]
             result[label] = hashlib.sha256(json.dumps(observed, sort_keys=True).encode()).hexdigest()

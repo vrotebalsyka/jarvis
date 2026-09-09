@@ -54,6 +54,14 @@ Pending result events изолированы по transport session; они не
 
 Владелец запретил менять registry rooms ради приёмки. Owner-confirmed room
 остаётся отдельной owner metadata, не записывается в HA и не подменяет registry fact.
+Отдельно разрешено хранить парные `registry_area=null` / `registry_area_ref=null`
+при обязательном `owner_area` в owner-managed allowlist. Это exact absence,
+не wildcard: fresh metadata обязана подтверждать явные null у entity и parent.
+Unknown/missing metadata отклоняется; назначение registry room даже с тем же
+именем инвалидирует plan. Bound record требует `owner_area=null`, чтобы источники
+не противоречили друг другу. Owner room и registry provenance входят в seal;
+подмена любого поля отклоняется. Allowlist не помогает выбирать равных candidates.
+Это изменение Phase A не разрешает установку конфигурации, activation или HA POST.
 
 Названия и состояния из HA считаются недоверенными данными. Они проходят
 ограничение длины, символов и secret/prompt-injection фильтр. Недоступные,

@@ -37,6 +37,10 @@ SHADOW/read-only до отдельного разрешения владельц
   остаётся неоднозначным.
 - Registry и inferred areas должны быть явно разделены в resolver context.
   `ReadReceipt.areas` содержит только HA registry bindings, не inferred rooms.
+- Canary allowlist допускает парные registry_area/registry_area_ref=null только
+  с отдельной owner_area. Это подтверждённое отсутствие binding, не wildcard:
+  fresh registry metadata обязана содержать явные null; missing/unknown reject.
+  Owner area не входит в resolver/HomeGraph/ReadReceipt и не снимает ambiguity.
 - Stage 73 разрешает ровно один bounded write adapter, только для 3–5 явно
   выбранных владельцем canaries. CONTROL_ENABLED и CANARY_LIVE_ENABLED по
   умолчанию false; Phase A не имеет разрешения на реальные HA POST/service calls.

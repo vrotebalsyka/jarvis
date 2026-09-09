@@ -381,6 +381,12 @@ def build_inventory(
             "hidden": bool(raw is not None and raw.get("hidden_by") is not None),
             "platform": platform, "integration_refs": integration_refs,
             "area_ref": area_ref, "registry_backed": not state_only,
+            # A failed/missing lookup is NOT evidence that the registry has no
+            # area. Canary authority needs explicit nulls in both source rows.
+            "registry_area_unassigned": bool(
+                raw is not None and "area_id" in raw and raw["area_id"] is None
+                and (not device_id or ("area_id" in device and device["area_id"] is None))
+            ),
         }
         entities.append(entity)
         node["entity_refs"].append(entity_ref)

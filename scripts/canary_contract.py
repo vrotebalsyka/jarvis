@@ -44,6 +44,10 @@ def digest(value: Any) -> str:
                                      separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
+def _area_name(value: object) -> bool:
+    return isinstance(value, str) and 1 <= len(value) <= 160 and value == value.strip() and bool(value.strip())
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class CanaryRecord:
     canary_id: str
@@ -52,12 +56,18 @@ class CanaryRecord:
     entity_id: str
     physical_identity: str
     domain: str
-    registry_area_ref: str
-    registry_area: str
+    registry_area_ref: str | None
+    registry_area: str | None
     allowed_actions: tuple[str, ...]
     verification_profile: str
     rollback_actions: tuple[str, ...]
     allow_noop: bool
+    owner_area: str | None = None
+
+    @property
+    def control_area(self) -> str:
+        """Owner scope is not a claim about HA registry metadata."""
+        return self.registry_area if self.registry_area is not None else self.owner_area
 
     @classmethod
     def parse(cls, row: Any) -> CanaryRecord:
@@ -69,12 +79,16 @@ class CanaryRecord:
             if (
                 not isinstance(record.canary_id, str) or not _ID.fullmatch(record.canary_id)
                 or any(not isinstance(ref, str) or not _REF.fullmatch(ref) for ref in (
-                    record.target_ref, record.entity_ref, record.physical_identity, record.registry_area_ref))
+                    record.target_ref, record.entity_ref, record.physical_identity))
                 or record.target_ref != record.entity_ref
                 or not isinstance(record.entity_id, str) or not _ENTITY.fullmatch(record.entity_id)
                 or record.domain not in {"light", "switch"}
                 or not record.entity_id.startswith(record.domain + ".")
-                or not isinstance(record.registry_area, str) or not 1 <= len(record.registry_area) <= 160
+                or not (
+                    (record.registry_area_ref is None and record.registry_area is None and _area_name(record.owner_area))
+                    or (isinstance(record.registry_area_ref, str) and _REF.fullmatch(record.registry_area_ref)
+                        and _area_name(record.registry_area) and record.owner_area is None)
+                )
                 or not record.allowed_actions or not set(record.allowed_actions) <= _ACTIONS
                 or set(record.rollback_actions) != _ACTIONS
                 or record.verification_profile != VERIFICATION_PROFILE
@@ -158,16 +172,23 @@ def load_config() -> ControlConfig:
 
 
 def binding_fingerprint(document: Mapping[str, Any], record: CanaryRecord, action: str) -> str:
-    """Exact metadata assertion, not another resolver. No inferred room fallback."""
+    """Assert exact binding OR proven registry absence; never infer a room."""
     entities = [row for row in document["entities"] if row["entity_ref"] == record.entity_ref]
     parents = [row for row in document["physical_nodes"] if row["target_ref"] == record.physical_identity]
     areas = [row for row in document["area_nodes"] if row["area_ref"] == record.registry_area_ref]
-    if len(entities) != 1 or len(parents) != 1 or len(areas) != 1:
+    if len(entities) != 1 or len(parents) != 1:
         raise CanaryError("identity_missing")
-    entity, parent, area = entities[0], parents[0], areas[0]
+    entity, parent = entities[0], parents[0]
+    if record.registry_area_ref is None:
+        if (record.registry_area is not None or not _area_name(record.owner_area)
+                or "area_ref" not in entity or entity["area_ref"] is not None
+                or entity.get("registry_area_unassigned") is not True):
+            raise CanaryError("registry_absence_not_confirmed")
+    elif len(areas) != 1 or areas[0]["name"] != record.registry_area or record.owner_area is not None:
+        raise CanaryError("registry_area_changed")
     if (entity["entity_id"] != record.entity_id or entity["target_ref"] != record.physical_identity
             or entity["domain"] != record.domain or entity["area_ref"] != record.registry_area_ref
-            or area["name"] != record.registry_area or entity.get("disabled") or entity.get("hidden")
+            or entity.get("disabled") or entity.get("hidden")
             or entity.get("entity_category") is not None or not entity.get("registry_backed")
             or parent.get("strong_identity") != "device_registry_id_hash"
             or entity["entity_ref"] not in parent["entity_refs"]
@@ -180,7 +201,7 @@ def binding_fingerprint(document: Mapping[str, Any], record: CanaryRecord, actio
                "aliases": parent.get("aliases", []) + entity.get("aliases", [])}
     if domains & _DENIED_PARENTS or policy.ACTION_POLICY_REGISTRY.evaluate(action, profile).decision != "allow_shadow":
         raise CanaryError("hard_deny")
-    return digest({"entity": entity, "parent": parent, "registry_area": area["name"],
+    return digest({"entity": entity, "parent": parent, "registry_area": record.registry_area,
                    "safety_domains": sorted(domains), "allowlist": asdict(record)})
 
 
@@ -206,6 +227,8 @@ class SealedActionPlan:
     owner_confirmation: str
     seal: str
     rollback_of: str | None = None
+    registry_area: str | None = None
+    owner_area: str | None = None
 
 
 def _seal(plan: SealedActionPlan) -> str:
@@ -231,22 +254,25 @@ def seal_plan(shadow: policy.ActionPlan, intent: str, request_key: str,
             raise CanaryError("physical_identity_mismatch")
     if shadow.domain != record.domain or shadow.scope.requested_feature != "power":
         raise CanaryError("scope_mismatch")
-    # Existing host resolver checked human morphology/type/name. Here its resolved
-    # effective area must equal the explicit registry binding, never inference.
-    if tuple(shadow.areas) != (record.registry_area,):
-        raise CanaryError("registry_area_required")
+    # The resolver has already selected the target. Owner scope never participates
+    # in candidate selection. Missing resolved room is allowed ONLY with a proven
+    # unassigned registry and a separately owner-approved room; conflicts reject.
+    if tuple(shadow.areas) != (record.control_area,) and not (
+            record.registry_area_ref is None and not shadow.areas):
+        raise CanaryError("resolved_area_mismatch")
     area_node = next((a for a in document["area_nodes"] if a["area_ref"] == record.registry_area_ref), {})
-    allowed_area_names = {str(name).casefold() for name in [record.registry_area, *area_node.get("aliases", [])]}
+    allowed_area_names = {str(name).casefold() for name in [record.control_area, *area_node.get("aliases", [])]}
     if any(requested.casefold() not in allowed_area_names for requested in shadow.scope.requested_areas):
-        raise CanaryError("requested_registry_area_mismatch")
+        raise CanaryError("requested_area_mismatch")
     fingerprint = binding_fingerprint(document, record, shadow.action)
     created = time.time() if now is None else now
     plan = SealedActionPlan(
         secrets.token_hex(16), digest(request_key), created, created + PLAN_TTL,
         digest(intent), shadow.scope.requested_areas, shadow.scope.requested_types,
-        shadow.scope.requested_feature, record.target_ref, record.registry_area, record.domain,
+        shadow.scope.requested_feature, record.target_ref, record.control_area, record.domain,
         shadow.action, fingerprint, config.fingerprint, record.verification_profile,
         "turn_off" if shadow.action == "turn_on" else "turn_on", "R2", "current_turn", "",
+        registry_area=record.registry_area, owner_area=record.owner_area,
     )
     return replace(plan, seal=_seal(plan))
 
@@ -263,6 +289,8 @@ def valid_plan(plan: object, *, now: float | None = None) -> bool:
             and plan.action in _ACTIONS and plan.rollback_action in _ACTIONS
             and plan.resolved_domain in {"light", "switch"} and plan.requested_feature == "power"
             and plan.verification_profile == VERIFICATION_PROFILE
+            and ((plan.registry_area is None and _area_name(plan.owner_area) and plan.resolved_area == plan.owner_area)
+                 or (_area_name(plan.registry_area) and plan.owner_area is None and plan.resolved_area == plan.registry_area))
             and hmac.compare_digest(plan.seal, _seal(plan))
         )
     except (TypeError, ValueError, AttributeError):
@@ -286,8 +314,8 @@ def seal_rollback(original: SealedActionPlan, initial_state: str, config: Contro
         raise CanaryError("rollback_not_approved")
     decision = policy.ACTION_POLICY_REGISTRY.evaluate(action, {"domains": {record.domain}})
     shadow = policy.seal_action_plan(target_ref=record.target_ref, target_label="Canary",
-                                    areas=(record.registry_area,), domain=record.domain, action=action,
-                                    scope=policy.ActionScope(requested_areas=(record.registry_area,)), decision=decision)
+                                    areas=(record.control_area,), domain=record.domain, action=action,
+                                    scope=policy.ActionScope(requested_areas=(record.control_area,)), decision=decision)
     plan = seal_plan(shadow, digest(["rollback", original.plan_id, initial_state]),
                      "rollback:" + original.plan_id, config, document)
     plan = replace(plan, rollback_of=original.plan_id, seal="")

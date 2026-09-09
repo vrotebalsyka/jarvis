@@ -227,7 +227,8 @@ class CanaryWriteAdapter:
             raise CanaryError("allowlist_changed")
         record = config.record(plan.resolved_target_ref)
         if (plan.action not in record.allowed_actions or plan.resolved_domain != record.domain
-                or plan.resolved_area != record.registry_area
+                or plan.resolved_area != record.control_area
+                or plan.registry_area != record.registry_area or plan.owner_area != record.owner_area
                 or plan.verification_profile != record.verification_profile
                 or plan.rollback_action not in record.rollback_actions):
             raise CanaryError("plan_policy_mismatch")

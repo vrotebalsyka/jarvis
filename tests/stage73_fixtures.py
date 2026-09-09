@@ -36,6 +36,7 @@ def config(doc: dict, enabled: bool = True) -> contract.ControlConfig:
         "canary_id": f"fixture-{index}", "target_ref": e["entity_ref"], "entity_ref": e["entity_ref"],
         "entity_id": e["entity_id"], "physical_identity": e["target_ref"], "domain": e["domain"],
         "registry_area_ref": e["area_ref"], "registry_area": areas[e["area_ref"]],
+        "owner_area": None,
         "allowed_actions": ["turn_on", "turn_off"], "verification_profile": "stable_boolean_state",
         "rollback_actions": ["turn_on", "turn_off"], "allow_noop": True,
     } for index, e in enumerate(doc["entities"])]

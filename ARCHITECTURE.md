@@ -11,8 +11,18 @@ enabled light/switch output во всём physical node, не после allowli
 Второго HomeGraph/resolver/conversation path нет.
 
 Root-owned `/etc/home-butler/canary.json` содержит оба OFF-by-default флага,
-отдельный owner approval и 3–5 private allowlist records. Inferred area никогда
-не заменяет требуемый registry binding. Write credential имеет отдельное имя
+отдельный owner approval и 3–5 private allowlist records. Registry binding либо
+точный (`registry_area_ref` + `registry_area`, `owner_area=null`), либо явно
+отсутствующий (оба registry поля `null`, отдельный обязательный `owner_area`).
+`null` не wildcard: HomeGraph хранит metadata-only `registry_area_unassigned`,
+истинный только при явных null в entity и parent registry rows. Missing field,
+неизвестная area reference и ошибка чтения не подтверждают отсутствие привязки.
+Inferred area никогда не становится registry fact. Owner area используется
+только для проверки scope после разрешения target; allowlist не участвует в
+resolver и не снимает ambiguity. Sealed plan сохраняет обе provenance отдельно;
+`resolved_area` равна registry room либо отдельно подтверждённой owner room.
+Любое появление binding, даже в той же комнате, инвалидирует прежний fingerprint.
+Write credential имеет отдельное имя
 `home-assistant-action.token`; installer не выдаёт его и не включает control.
 
 Один adapter принимает только SealedActionPlan. Он использует fixed service
@@ -30,6 +40,10 @@ transport; production resolver/executor/verifier/renderer он не импорт
 POST блокируется durable journal. Истёкшее окно не превращает unknown в success.
 Подготовленный live runner default STOP: отдельный root-owned Phase B approval
 связан с Git/runtime/manifest/allowlist. Сам он control flags не включает.
+Prepared runner сверяет owner-reviewed expected room до отправки и затем
+сравнивает ответ именно с frozen expected room, не с результатом resolver.
+Independent registry oracle отдельно проверяет и точную room, и явное отсутствие
+binding. Owner metadata не записывается в HA, HomeGraph или ReadReceipt.
 
 Sticky emergency latch выключает оба effective control flags во всех процессах.
 Обычный rollback — новый bounded plan на захваченное BEFORE state, с one-use

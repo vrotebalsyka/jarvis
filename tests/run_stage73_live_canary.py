@@ -128,6 +128,15 @@ def run_cycles(rows, config, adapter, boundary, inventory_loader, oracle_reader,
     bindings = oracle.bind_shadow_expectations(doc, rows)  # before any answer
     pinned = {row["case_id"]: config.record(bindings[row["case_id"]]["entity_ref"])
               for row in rows if row["expected_outcome"] == "plan"}
+    # Independent human expectations are fixed before the response. An owner's
+    # room must not be silently replaced with either HA null or resolver output.
+    for row in rows:
+        if row["case_id"] not in pinned:
+            continue
+        record, binding = pinned[row["case_id"]], bindings[row["case_id"]]
+        if (row["expected_area"] != record.control_area or binding["registry_area"] != record.registry_area
+                or binding["physical_ref"] != record.physical_identity or binding["domain"] != record.domain):
+            raise LiveStop("owner_manifest_binding_mismatch")
     targets = {record.canary_id: record for record in pinned.values()}
     if len(targets) < 3 or cycles_per_target < (1 if fake else 20):
         raise LiveStop("insufficient_canary_matrix")
@@ -206,7 +215,7 @@ def run_cycles(rows, config, adapter, boundary, inventory_loader, oracle_reader,
                     stable, identity_after = oracle_reader(), binding_reader()
                     used = boundary.metrics["SERVICE_CALLS"] - prior
                     score = oracle.evaluate(expected_target=record.target_ref, resolved_target=plan.resolved_target_ref,
-                        expected_area=record.registry_area, resolved_area=plan.resolved_area,
+                        expected_area=row["expected_area"], resolved_area=plan.resolved_area,
                         action=row["expected_action"], before=oracle.OracleRead(before.started_at, before.completed_at,
                             tuple((config.record(next(c.target_ref for c in config.records if c.canary_id == k)).target_ref, v)
                                   for k, v in before.states)),
@@ -314,7 +323,8 @@ def main():
         result = run_cycles(rows, cfg, adapter, Boundary(reader.host, reader.port, adapter.emergency_stop),
             lambda: graph.collect_inventory(reader),
             lambda: oracle.read_states(reader.host, reader.port, reader.token, private),
-            lambda: oracle.read_bindings(reader.host, reader.port, reader.token, private), authorize=authorize)
+            lambda: oracle.read_bindings(reader.host, reader.port, reader.token, private,
+                {r.canary_id: r.registry_area for r in cfg.records}), authorize=authorize)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
         print(json.dumps({key: value for key, value in result.items() if key != "cases"}))
         return 0 if result["status"] == "PASS" else 1

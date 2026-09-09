@@ -36,9 +36,28 @@ SESSION_COOKIE = "home_butler_session"
 AUTH_COOKIE = "home_butler_lan_auth"
 SESSION_RE = re.compile(r"[A-Za-z0-9_-]{43}\Z")
 
-LOGIN_HTML = """<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content="width=device-width"><meta name=home-butler-csrf content="__CSRF__"><title>Вход</title><style>body{font:16px system-ui;background:#0b1118;color:#eef4f2;display:grid;place-items:center;min-height:90vh}main{width:min(420px,90%)}input,button{box-sizing:border-box;width:100%;padding:14px;margin:6px 0;border-radius:10px}</style><main><h1>Домашний дворецкий</h1><p>Введите ключ владельца.</p><form><input id=k type=password><button>Войти</button></form><p id=e></p></main><script>const c=document.querySelector('meta').content;document.querySelector('form').onsubmit=async x=>{x.preventDefault();let r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Home-Butler-CSRF':c},body:JSON.stringify({key:k.value})});if(r.ok)location.reload();else e.textContent='Ключ не принят'}</script></html>"""
+LOGIN_HTML = """<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content="width=device-width"><meta name=home-butler-csrf content="__CSRF__"><title>Вход</title><style>body{font:16px system-ui;background:#0b1118;color:#eef4f2;display:grid;place-items:center;min-height:90vh}main{width:min(420px,90%)}input,button{box-sizing:border-box;width:100%;padding:14px;margin:6px 0;border-radius:10px}</style><main><h1>Домашний дворецкий</h1><p>Введите ключ владельца.</p><form><input id=k type=password><button>Войти</button></form><p id=e></p></main><script>const c=document.querySelector('meta[name=home-butler-csrf]').content;document.querySelector('form').onsubmit=async x=>{x.preventDefault();let r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Home-Butler-CSRF':c},body:JSON.stringify({key:k.value})});if(r.ok)location.reload();else e.textContent='Ключ не принят'}</script></html>"""
 
-HTML = """<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content="width=device-width"><meta name=home-butler-csrf content="__CSRF__"><title>Домашний дворецкий</title><style>body{margin:0;font:16px system-ui;background:#0b1118;color:#eef4f2}main{max-width:820px;margin:auto;padding:28px}#m{min-height:55vh;display:flex;flex-direction:column;gap:12px}.a,.u{padding:12px 15px;border-radius:14px;max-width:78%;white-space:pre-wrap}.a{background:#1b2d3a}.u{background:#d8e9e8;color:#0c171b;align-self:flex-end}form{display:flex;gap:10px}textarea{flex:1;padding:12px;border-radius:10px}button{padding:0 20px;border:0;border-radius:10px;background:#63d4df}</style><main><h1>Домашний дворецкий</h1><p>Только чтение текущих данных Home Assistant.</p><div id=m><div class=a>Я на связи. Спросите о состоянии устройства обычными словами.</div></div><form><textarea id=q maxlength=2000></textarea><button>Отправить</button></form></main><script>const c=document.querySelector('meta').content,m=document.querySelector('#m'),q=document.querySelector('#q'),f=document.querySelector('form');function add(t,k){let d=document.createElement('div');d.className=k;d.textContent=t;m.append(d)}f.onsubmit=async e=>{e.preventDefault();let v=q.value.trim();if(!v)return;add(v,'u');q.value='';try{let r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Home-Butler-CSRF':c},body:JSON.stringify({message:v})}),d=await r.json();add(r.ok?d.answer:d.error,'a')}catch(_){add('Нет связи с локальным контуром.','a')}};</script></html>"""
+HTML = """<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content="width=device-width"><meta name=home-butler-csrf content="__CSRF__"><title>Домашний дворецкий</title><style>body{margin:0;font:16px system-ui;background:#0b1118;color:#eef4f2}main{max-width:820px;margin:auto;padding:28px}#m{min-height:55vh;display:flex;flex-direction:column;gap:12px}.a,.u{padding:12px 15px;border-radius:14px;max-width:78%;white-space:pre-wrap}.a{background:#1b2d3a}.u{background:#d8e9e8;color:#0c171b;align-self:flex-end}form{display:flex;gap:10px}textarea{flex:1;padding:12px;border-radius:10px}button{padding:0 20px;border:0;border-radius:10px;background:#63d4df}</style><main><h1>Домашний дворецкий</h1><p>Только чтение текущих данных Home Assistant.</p><div id=m><div class=a>Я на связи. Спросите о состоянии устройства обычными словами.</div></div><form><textarea id=q maxlength=2000></textarea><button>Отправить</button></form></main><script>const c=document.querySelector('meta[name=home-butler-csrf]').content,m=document.querySelector('#m'),q=document.querySelector('#q'),f=document.querySelector('form');function add(t,k){let d=document.createElement('div');d.className=k;d.textContent=t;m.append(d)}f.onsubmit=async e=>{e.preventDefault();let v=q.value.trim();if(!v)return;add(v,'u');q.value='';try{let r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Home-Butler-CSRF':c,'X-Home-Butler-Request-ID':[...crypto.getRandomValues(new Uint8Array(16))].map(x=>x.toString(16).padStart(2,'0')).join('')},body:JSON.stringify({message:v})}),d=await r.json();add(r.ok?d.answer:d.error,'a')}catch(_){add('Нет связи с локальным контуром.','a')}};</script></html>"""
+
+
+HTML = HTML.replace("</script></html>", """
+let resultPoll;
+async function pollActionResults(left) {
+  try {
+    const response = await fetch('/api/action-results');
+    if (!response.ok) return;
+    const data = await response.json();
+    for (const event of data.events || []) if (event.type === 'action_result') add(event.answer, 'a');
+    if ((data.events || []).length) return;
+  } catch (_) { return; }
+  if (left > 0) resultPoll = setTimeout(() => pollActionResults(left - 1), 1000);
+}
+f.addEventListener('submit', () => {
+  clearTimeout(resultPoll);
+  resultPoll = setTimeout(() => pollActionResults(29), 1000);
+});
+</script></html>""")
 
 
 class LocalChatError(RuntimeError):
@@ -150,10 +169,15 @@ class ChatApplication:
                 self.sessions[session_id] = Session(now, self.context_factory())
             return self.sessions[session_id]
 
-    def answer(self, session_id: str, question: str) -> str:
+    def answer(self, session_id: str, question: str, request_id: str | None = None) -> str:
         record = self.session(session_id)
         with record.lock:
-            response = self.answerer(question, {**record.context, "transport": "local_chat"}, list(record.history))
+            context = {**record.context, "transport": "local_chat"}
+            if request_id is not None:
+                if re.fullmatch(r"[a-zA-Z0-9_-]{16,80}", request_id) is None:
+                    raise LocalChatError("invalid request identity")
+                context["control_request_key"] = f"local:{session_id}:{request_id}"
+            response = self.answerer(question, context, list(record.history))
             if not isinstance(response, str) or not response.strip():
                 raise LocalChatError("empty response")
             record.history.extend(({"role": "user", "content": question}, {"role": "assistant", "content": response}))
@@ -210,9 +234,17 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(document, ensure_ascii=False, separators=(",", ":")).encode(), "application/json; charset=utf-8", cookies_out)
 
     def do_GET(self) -> None:  # noqa: N802
-        if not self._allowed() or self.path != "/":
+        if not self._allowed() or self.path not in {"/", "/api/action-results"}:
             self.send_error(404); return
         session, created = self._session()
+        if self.path == "/api/action-results":
+            if created or not self._authorized(session):
+                self._json(401, {"error": "Требуется сессия владельца."}); return
+            record = self.application.session(session)
+            with record.lock:
+                channel = record.context.get("action_results")
+                events = channel.poll() if isinstance(channel, owner_chat.bounded_ha_agent.ActionResultEvents) else []
+            self._json(200, {"events": events}); return
         page = HTML if self._authorized(session) else LOGIN_HTML
         outgoing = [f"{SESSION_COOKIE}={session}; HttpOnly; SameSite=Strict; Path=/"] if created else []
         self._send(200, page.replace("__CSRF__", self.application.csrf_token).encode(), "text/html; charset=utf-8", outgoing)
@@ -242,7 +274,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized(session):
             self._json(401, {"error": "Требуется ключ владельца."}); return
         try:
-            answer = self.application.answer(session, parse_message(self.rfile.read(length)))
+            answer = self.application.answer(session, parse_message(self.rfile.read(length)),
+                                             self.headers.get("X-Home-Butler-Request-ID"))
         except (LocalChatError, owner_chat.OwnerChatError, OSError):
             self._json(503, {"error": "Ответ не завершён. Повторите фразу."}, outgoing); return
         self._json(200, {"answer": answer}, outgoing)

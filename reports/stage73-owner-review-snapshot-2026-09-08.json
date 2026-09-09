@@ -1,0 +1,2085 @@
+{
+  "status": "fail",
+  "scope": "metadata_snapshot_replay_only",
+  "fresh_home_graph": false,
+  "not_phase_a_acceptance": true,
+  "manifest_sha256": "b4fce23a0462ba0c23626ac63cd506c368ede500003a8ad5807a9a0007e01f06",
+  "raw_commands": 25,
+  "frozen_manifest_count": 25,
+  "partial_replay": false,
+  "models_used": {
+    "qwen3.5:2b-q4_K_M": 1
+  },
+  "unique_utterances": 25,
+  "selected_targets": 4,
+  "owner_reviewed_commands": 0,
+  "missing_registry_bindings": 4,
+  "passed": 23,
+  "failures": 2,
+  "failed_case_ids": [
+    "R14",
+    "R20"
+  ],
+  "WRONG_TARGET": 0,
+  "CROSS_ROOM_TARGET": 0,
+  "AMBIGUOUS_PLAN": 0,
+  "FALSE_ACTION_INTENT": 0,
+  "FORBIDDEN_PLAN": 0,
+  "MISSED_EXPECTED_PLAN": 2,
+  "WRONG_ACTION": 0,
+  "MODEL_CALLS": 1,
+  "MODEL_PROMPT_TECHNICAL_IDS": 0,
+  "DETERMINISTIC_RESOLUTIONS": 16,
+  "MODEL_ASSISTED_RESOLUTIONS": 0,
+  "CANARY_SEALED_PLANS": 0,
+  "network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "HA_GET": 0,
+    "REGISTRY_READS": 0,
+    "BLOCKED": 0
+  },
+  "latency": {
+    "n": 25,
+    "p50_s": 1.6349,
+    "p95_s": 2.5531,
+    "p99_s": 4.3071
+  },
+  "cases": [
+    {
+      "case_id": "R01",
+      "utterance": "включи свет в кабинете",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Свет",
+      "expected_area": "Кабинет",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Свет",
+      "selected_areas": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5911,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить Свет. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R02",
+      "utterance": "выключи свет в кабинете",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Свет",
+      "expected_area": "Кабинет",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Свет",
+      "selected_areas": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5626,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: выключить Свет. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R03",
+      "utterance": "сделай в кабинете светло",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Свет",
+      "expected_area": "Кабинет",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Свет",
+      "selected_areas": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5581,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить Свет. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R04",
+      "utterance": "в кабинете темно, включи там свет",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Свет",
+      "expected_area": "Кабинет",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Свет",
+      "selected_areas": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.6125,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить Свет. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R05",
+      "utterance": "можешь погасить свет в кабинете",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Свет",
+      "expected_area": "Кабинет",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Свет",
+      "selected_areas": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5791,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: выключить Свет. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R06",
+      "utterance": "включи коридор",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "коридор",
+      "selected_areas": [
+        "Коридор"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.586,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить коридор. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R07",
+      "utterance": "выключи коридор",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "коридор",
+      "selected_areas": [
+        "Коридор"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "action",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.534,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: выключить коридор. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R08",
+      "utterance": "давай включим коридор",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "коридор",
+      "selected_areas": [
+        "Коридор"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5593,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить коридор. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R09",
+      "utterance": "включи кориодр",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "коридор",
+      "selected_areas": [
+        "Коридор"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "morphology_typo",
+        "evidence": "weak_verified"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 2.2697,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить коридор. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R10",
+      "utterance": "пусть в коридоре будет светло",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "Лампа",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r3",
+          "label": "Xiaomi Outdoor Camera CW700S Indicator Light",
+          "areas": [
+            "сад"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r4",
+          "label": "зеркало Switch 1",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r5",
+          "label": "зеркало",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r6",
+          "label": "ночник Подсветка",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r7",
+          "label": "ночник",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r8",
+          "label": "Xiaomi Outdoor Camera CW700S Indicator Light Switch Status",
+          "areas": [
+            "сад"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "domain_device_class",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.7953,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R11",
+      "utterance": "включи ночник Подсветка",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "ночник Подсветка",
+      "expected_area": null,
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "ночник Подсветка",
+      "selected_areas": [],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "requested_name": "подсветка",
+      "requested_areas": [],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [],
+          "types": [
+            "light"
+          ],
+          "name": "подсветка",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "ночник Подсветка",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.6071,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить ночник Подсветка. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R12",
+      "utterance": "выключи ночник Подсветка",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "ночник Подсветка",
+      "expected_area": null,
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "ночник Подсветка",
+      "selected_areas": [],
+      "selected_domain": "light",
+      "selected_action": "turn_off",
+      "requested_name": "подсветка",
+      "requested_areas": [],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [],
+          "types": [
+            "light"
+          ],
+          "name": "подсветка",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "ночник Подсветка",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.6417,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: выключить ночник Подсветка. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R13",
+      "utterance": "давай включим ночник Подсветка",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "ночник Подсветка",
+      "expected_area": null,
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "ночник Подсветка",
+      "selected_areas": [],
+      "selected_domain": "light",
+      "selected_action": "turn_on",
+      "requested_name": "подсветка",
+      "requested_areas": [],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [],
+          "types": [
+            "light"
+          ],
+          "name": "подсветка",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "ночник Подсветка",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.7296,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить ночник Подсветка. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R14",
+      "utterance": "хочу чтобы ночник Подсветка светился",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "ночник Подсветка",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": "ночник",
+      "requested_areas": [],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [],
+          "types": [
+            "light"
+          ],
+          "name": "ночник",
+          "feature": "power"
+        },
+        "parser": "model"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "Лампа",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r3",
+          "label": "Xiaomi Outdoor Camera CW700S Indicator Light",
+          "areas": [
+            "сад"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r4",
+          "label": "зеркало Switch 1",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r5",
+          "label": "зеркало",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r6",
+          "label": "ночник Подсветка",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r7",
+          "label": "ночник",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r8",
+          "label": "Xiaomi Outdoor Camera CW700S Indicator Light Switch Status",
+          "areas": [
+            "сад"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "domain_device_class",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 4.8386,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R15",
+      "utterance": "включи ночник в кабинете",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "ночник Подсветка",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "Лампа",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r3",
+          "label": "лампа",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.6397,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R16",
+      "utterance": "включи вытяжку на кухне",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Вытяжка на кухне",
+      "expected_area": "Кухня",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_areas": [
+        "Кухня"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кухня"
+          ],
+          "types": [
+            "fan"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Вытяжка на кухне",
+          "areas": [
+            "Кухня"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5262,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить Вытяжка на кухне. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R17",
+      "utterance": "выключи вытяжку на кухне",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Вытяжка на кухне",
+      "expected_area": "Кухня",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_areas": [
+        "Кухня"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "requested_name": null,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Кухня"
+          ],
+          "types": [
+            "fan"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Вытяжка на кухне",
+          "areas": [
+            "Кухня"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5886,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: выключить Вытяжка на кухне. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R18",
+      "utterance": "давай включим вытяжку на кухне",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Вытяжка на кухне",
+      "expected_area": "Кухня",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_areas": [
+        "Кухня"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кухня"
+          ],
+          "types": [
+            "fan"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Вытяжка на кухне",
+          "areas": [
+            "Кухня"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.561,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить Вытяжка на кухне. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R19",
+      "utterance": "можешь выключить вытяжку на кухне",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Вытяжка на кухне",
+      "expected_area": "Кухня",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_areas": [
+        "Кухня"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "requested_name": null,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Кухня"
+          ],
+          "types": [
+            "fan"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Вытяжка на кухне",
+          "areas": [
+            "Кухня"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.6349,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: выключить Вытяжка на кухне. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R20",
+      "utterance": "включи вытяжку",
+      "category": "owner_review",
+      "expected_outcome": "plan",
+      "expected_human_target": "Вытяжка на кухне",
+      "expected_area": "Кухня",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [],
+      "requested_types": [
+        "fan"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [],
+          "types": [
+            "fan"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Вытяжка на кухне",
+          "areas": [
+            "Кухня"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "вытяжка Блокировка от детей",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r3",
+          "label": "вытяжка Socket 1",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "domain_device_class",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 2.624,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R21",
+      "utterance": "включи реле вентилятора",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "реле вентилятора",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": "вентилятора",
+      "requested_areas": [],
+      "requested_types": [
+        "switch"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [],
+          "types": [
+            "switch"
+          ],
+          "name": "вентилятора",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.7329,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R22",
+      "utterance": "выключи реле вентилятора",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "реле вентилятора",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": "вентилятора",
+      "requested_areas": [],
+      "requested_types": [
+        "switch"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [],
+          "types": [
+            "switch"
+          ],
+          "name": "вентилятора",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.7857,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R23",
+      "utterance": "включи реле вентилятора в кабинете",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "реле вентилятора",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": "вентилятора",
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "switch"
+          ],
+          "name": "вентилятора",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "кабинет Switch 2",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "кабинет Switch 1",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.7991,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R24",
+      "utterance": "можешь выключить реле вентилятора",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "реле вентилятора",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": "вентилятора",
+      "requested_areas": [],
+      "requested_types": [
+        "switch"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [],
+          "types": [
+            "switch"
+          ],
+          "name": "вентилятора",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.8024,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "R25",
+      "utterance": "давай включим реле вентилятора",
+      "category": "owner_review",
+      "expected_outcome": "clarification",
+      "expected_human_target": "реле вентилятора",
+      "expected_area": null,
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": "вентилятора",
+      "requested_areas": [],
+      "requested_types": [
+        "switch"
+      ],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [],
+          "types": [
+            "switch"
+          ],
+          "name": "вентилятора",
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "реле вентилятора",
+          "areas": [],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.8738,
+      "pass": true,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    }
+  ],
+  "owner_reviewed": false,
+  "live_authorized": false
+}

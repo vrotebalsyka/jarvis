@@ -1,6 +1,53 @@
-# Architecture — Stage 72
+# Architecture — Stage 73 Phase A / Stage 72 production
 
-## Единственный production path
+Stage 73 разрабатывается отдельно; production остаётся на завершённом Stage 72.
+Ниже сохранён базовый read/shadow path. Canary расширяет его после sealed shadow
+plan: `canary_contract → canary_write_adapter → canary_verifier → ActionReceipt`
+и возвращает receipt существующему renderer в `bounded_ha_agent`.
+
+`canary_contract` не разрешает имена: он проверяет точные owner-approved
+bindings. Physical shadow target связывается с entity только при единственном
+enabled light/switch output во всём physical node, не после allowlist filtering.
+Второго HomeGraph/resolver/conversation path нет.
+
+Root-owned `/etc/home-butler/canary.json` содержит оба OFF-by-default флага,
+отдельный owner approval и 3–5 private allowlist records. Inferred area никогда
+не заменяет требуемый registry binding. Write credential имеет отдельное имя
+`home-assistant-action.token`; installer не выдаёт его и не включает control.
+
+Один adapter принимает только SealedActionPlan. Он использует fixed service
+mapping, fresh metadata/BEFORE read, durable pre-send reservation и один POST
+без retry. Verifier независимо делает AFTER/STABILITY GET и registry read.
+HTTP response не является доказательством состояния. Внешний acceptance oracle
+в `tests/stage73_oracle.py` использует собственный GET и read-only registry
+transport; production resolver/executor/verifier/renderer он не импортирует.
+
+`accepted_unverified` / `delivery_unknown` продолжаются через GET-only
+`verify_pending`, не через повторное execution. Окно result event — 30 s,
+канал ephemeral и отдельный для каждой Web/Alice session. Web получает event
+через authenticated GET `/api/action-results`; Alice/CLI — на следующем turn.
+Это не scheduler и не unsolicited push. Пока delivery не подтверждён, новый
+POST блокируется durable journal. Истёкшее окно не превращает unknown в success.
+Подготовленный live runner default STOP: отдельный root-owned Phase B approval
+связан с Git/runtime/manifest/allowlist. Сам он control flags не включает.
+
+Sticky emergency latch выключает оба effective control flags во всех процессах.
+Обычный rollback — новый bounded plan на захваченное BEFORE state, с one-use
+key и тем же verifier; после emergency запрет control не обходится. Неуверенная
+identity означает отсутствие автоматического rollback и необходимость решения
+владельца. Phase A не считается законченной без обязательного owner corpus.
+
+Exact entity на mixed light/switch parent может разрешаться отдельно; имя
+parent с несколькими выходами требует clarification. Disabled config child-lock
+с явным `translation_key=child_lock` не классифицирует parent как физический
+замок; lock-target и прочие опасные domains по-прежнему запрещены. Изменение
+этой metadata инвалидирует canary binding. Вопрос «как включить» не является
+командой и получает host-ответ без model-generated инструкций о доме.
+Whole physical name после морфологии/одной перестановки букв принимается лишь
+после host revalidation; это не разрешение выбирать child channel родителя.
+Явный room qualifier не превращается в exact physical name удалением предлога.
+
+## Базовый Stage 72 production path
 
 ```text
 local_chat_gateway ─┐
@@ -72,11 +119,11 @@ clarification. Unique weak/fuzzy evidence проходит отдельную п
 owner tokens и строгого score margin по всему HomeGraph; недостаточная evidence
 даёт clarification. Затем host создаёт immutable ActionPlan с
 process-local HMAC seal. В плане нет entity/device/capability ID или service
-path, а исполнительного API не существует. Machine-readable trace содержит
+path, а исполнительного API в Stage 72 production не существует. Machine-readable trace содержит
 intent, безопасных candidates, выбранный label, policy и обязательные
 `service_calls=0`, `ha_post=0`.
 
-Planning не вызывает fresh-state adapter. Единственная HA HTTP-функция имеет
+Planning не вызывает fresh-state adapter. В Stage 72 HA HTTP-функция имеет
 закрытую сигнатуру без method и сама отправляет только GET к двум allowlisted
 paths; instrumented acceptance дополнительно блокирует любой HA non-GET.
 
@@ -93,5 +140,6 @@ Stage 71 independent oracle продолжает защищать read path. Sta
 содержит ровно 1000 raw команд, frozen owner blind corpus — 40 строк, новый
 natural-language corpus — 100 фраз. Отдельные live harnesses проверяют
 production parser/resolver, текущий real-home metadata graph и фактическую
-локальную модель при физически заблокированном HA POST. Реального action
-executor нет.
+локальную модель при физически заблокированном HA POST. В production action
+executor нет. Stage73 shadow draft и его независимые expectations описаны в
+`STAGE-73-RESULT.md`; они ещё не являются owner-reviewed canary acceptance.

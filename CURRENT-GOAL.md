@@ -1,6 +1,109 @@
-# Current Goal — Stage 72
+# Current Goal — Stage 73 Phase A
 
-Статус: `STAGE72_READ_CLEANUP_GATE_GREEN`.
+Статус Phase A: `FAIL / NOT_READY`.
+Live status: `INCOMPLETE_LIVE_APPROVAL_REQUIRED`. Stage74 не начат.
+Ветка `stage73-canary-live-control`; base и последний проверенный main:
+`8bc3b480a9fa2414dfe8680233db5b23ee0b54fe`.
+Владелец 2026-09-09 отдельно запросил сохранение и GitHub-публикацию текущей
+незавершённой работы и отчётов. Это не green gate, promotion или Phase B approval.
+Сводка и разбор четырёх скриншотов: reports/WORK-REPORT-2026-09-09.md.
+Remote-проверка заблокирована approval layer: `workspace is out of credits`.
+Push и актуальный remote SHA не подтверждены. Main не изменяется.
+
+Владелец выбрал для подготовки пять targets: switch «Свет» (physical «кабинет»),
+switch «коридор», light «ночник Подсветка», switch «Вытяжка на кухне» и switch
+«реле вентилятора». Это не Phase B approval. Allowlist records/action credential
+не установлены, оба flags OFF. Canary runtime отсутствует. Stage73 deploy
+не выполнялся. 2026-09-09 по отдельному разрешению владельца установлен только
+CSRF-hotfix Stage72 local_chat_gateway.py (две замены selector, 281→281 строк)
+и перезапущен только home-butler-local-chat.service. Остальные 14 проверенных
+runtime scripts не изменились; Alice PID/active timestamp не изменились.
+CSRF checkpoint: Stage72 base + этот uncommitted hotfix, не byte-identical main.
+Repository suite на этом checkpoint: 138/138 PASS (55.342 s); staged-runtime CSRF tests:
+4/4 PASS. Browser /help: HTTP 200, правильный CSRF. Два «привет»: HTTP 503;
+диагностическое воспроизведение в mount namespace сервиса дошло до
+validate_owner_answer и отклонило non-BMP pictograph (не CSRF и не HA timeout).
+Это был отдельный backend defect; CSRF-hotfix фильтры ответа модели не менял.
+Evidence: reports/local-chat-csrf-hotfix-2026-09-09.json. HA control не включался.
+
+Следующее отдельное разрешение владельца 2026-09-09: исправлена только
+validate_owner_answer в production bounded_ha_agent.py (1137→1143 строк).
+Безопасный Unicode сохраняется; прежние secret/technical-ID regex проверяют
+исходный текст и дополнительную нормализованную копию без Unicode-маскировки.
+Невалидные суррогаты и управляющие символы отклоняются. Рестарт только local chat;
+Alice не перезапущена (её загруженный код этим не обновлён), модель/HA не менялись.
+Runtime — Stage72 base + CSRF и Unicode hotfix, отдельно от полной Stage73 ветки.
+Repository: 145/145 PASS (55.977 s); staged-runtime compatibility: 14/14 PASS.
+Browser: «привет» HTTP 200; «спасибо» HTTP 200 с реальным ответом модели «🤗».
+Отдельная просьба «Поздоровайся и добавь эмодзи машущей руки.» получила
+clarification, не conversation: этот parser limitation зафиксирован, не исправлен
+и не посчитан semantic PASS. Phase B не начата; canary runtime отсутствует.
+Evidence: reports/local-chat-unicode-hotfix-2026-09-09.json.
+
+Owner clarification 2026-09-08: ночник и реле вентилятора находятся в Кабинете,
+вытяжка — на Кухне; выбран именно tuya_local relay. Владелец подтвердил,
+что вытяжку и вентилятор безопасно выключать и включать. Это подтверждение
+назначения/безопасности targets, не запуск Phase B до green Phase A.
+Повторный fresh read нашёл ровно по одному enabled exact entity+physical-name+
+domain+tuya_local binding для каждого из пяти targets. Registry area всё ещё
+отсутствует у всех пяти: owner-confirmed room не подставляется как HA fact.
+Два relay physical nodes не объединяются, allowlist не используется для
+disambiguation. Нужны registry bindings и отдельный review live canary command
+manifest; frozen expectations не менялись. HA registry не изменялся.
+Проверка уточнения: HA_GET=1, REGISTRY_READS=3, HA_POST=SERVICE_CALLS=BLOCKED=0.
+Владелец явно ОТКАЗАЛ в изменении registry rooms ради тестов. HA registry не
+изменять, не повторять запрос на такое изменение как условие PASS. Его сведения
+о комнате не подставлять в registry fact. Phase B и реальные HA POST запрещены.
+
+Stage73 checkpoint до transport hotfix: repository 134/134 PASS (51.789 s); canary/security 49/49 и
+prepared-runner fake tests 5/5 PASS. Live runner default STOP, не запущен; engine проверен
+только на fake HA. Добавлен GET-only result event, session-local для Web/Alice.
+Текущая Stage71 live/oracle попытка ERROR / HA unavailable (InventoryError).
+Независимые HA GET и registry-connect probes также TimeoutError (5/10 s).
+Предыдущий Stage71 PASS (до последней discourse correction): wrong/invented/lost=0,
+30 physical+10 logical, 215/215 enabled represented, 2 skips; это не текущий gate.
+Stage72 natural вновь 100/100, room/type snapshot 42/42; P95=.1500/1.6728 s.
+Промежуточный A03 AMBIGUOUS_PLAN=1 сохранён в evidence и исправлен generic
+qualified-name ambiguity contract; expectations не менялись.
+Actual HA_POST=0, SERVICE_CALLS=0, сетевые перехватчики блокируют writes.
+
+Frozen unreviewed Stage73 draft: 205 raw / 183 unique phrases, 5 targets.
+Initial 113/205 с false action intent=2; intermediate 158/205 с wrong action=1.
+Воспроизведённые generic defects исправлены без house-specific rules.
+Последний fresh replay до discourse correction: 160/205, 45 missed plans.
+Последние шесть исходных weak-evidence cases прошли targeted snapshot 6/6.
+Исправлены adjacent transposition, проверка полного physical name без потери
+entity channel, desired-state discourse. Реальные одинаковые physical names
+остаются clarification. Итоговый full snapshot: 170/205; 35 remaining cases —
+relay ambiguity, не wrong target; P50/P95/P99=1.5402/2.1397/2.4466 s.
+Snapshot не является fresh HA acceptance. HA_GET=REGISTRY_READS=0.
+Expectations не изменены; owner_reviewed=0, sealed canary plans=0.
+Gate ≥200 raw canary shadow commands PASS не достигнут. Это не green Phase A.
+
+Новый frozen owner-review draft: 25 обычных фраз только для выбранных пяти
+canaries, `tests/data/stage73_owner_review_25.jsonl`; human table
+`reports/STAGE73-OWNER-REVIEW.html`. Owner approval=false, live approval=false.
+Итог: 17 plans + 8 clarifications; 24/25 совпадений с исходным draft, R20
+оставлен расхождением (правильное clarification), а не изменён после ответа.
+Короткая «вытяжка» также имеет конкурирующий physical target: clarification
+правилен; ошибочное draft expected plan сохранено, не переписано после ответа.
+
+Диагностика: TCP к HA-порту timeout и из Windows, и из WSL; HA address отвечает
+на ICMP (15 ms), LAN gateway (0 ms), Ethernet route в той же подсети.
+Сбой до HTTP/auth/registry commands; DNS/token/resolver не являются причиной
+этого TCP timeout. Listener/firewall/identity отвечающего host не различимы
+без HA console logs или проверки другим LAN client. Ничего не перезапускалось.
+Измерения: reports/stage73-ha-connectivity-2026-09-08.json.
+
+Предыдущие local chat и локальные Alice/model/HA-read probes PASS; публичная Alice probe
+FAIL (SSLEOFError), несмотря на active services и валидную Funnel configuration.
+Позднее HA read стал недоступен; старый health PASS не выдаётся за текущий.
+Сеть и сервисы не менялись. Подробные traces/metrics/limitations:
+`STAGE-73-RESULT.md`. Live cycles=0, Phase B запрещена без отдельного разрешения.
+
+## Историческое завершение Stage 72
+
+Статус завершённого cleanup: `STAGE72_READ_CLEANUP_GATE_GREEN`.
 
 Promotion baseline: `main = 7eb0a9fd8b03cf481e58aff06b78830b6658a868`.
 Safety tag: `stage72-complete-7eb0a9f`. Этот commit установлен и активирован

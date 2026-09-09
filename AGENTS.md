@@ -2,8 +2,9 @@
 
 ## Назначение
 
-Jarvis читает свежие очищенные факты Home Assistant и в Stage 72 строит только
-shadow-планы для безопасных команд. Production строго read-only. Ответ модели
+Jarvis читает свежие очищенные факты Home Assistant. Stage 73 Phase A добавляет
+ограниченный canary-контур в отдельной ветке; production остаётся Stage 72
+SHADOW/read-only до отдельного разрешения владельца. Ответ модели
 не считается измерением и никогда не является разрешением на side effect.
 
 ## Обязательная архитектура
@@ -26,7 +27,8 @@ shadow-планы для безопасных команд. Production стро�
 - Session focus только ephemeral: last target/feature, pending clarification и
   TTL. Persistent dialog memory запрещена.
 - Action planning допускается только в существующем path, через единственный
-  `ActionPolicyRegistry`: light/switch turn_on/turn_off и только mode=shadow.
+  `ActionPolicyRegistry`: light/switch turn_on/turn_off. Canary authority
+  накладывается на существующий shadow plan, не создаёт второй resolver.
 - Action candidates могут быть turn-local entity-проекцией внутри того же
   HomeGraph: parent physical identity сохраняется, exact physical ambiguity не
   скрывается, второй граф не создаётся.
@@ -35,8 +37,10 @@ shadow-планы для безопасных команд. Production стро�
   остаётся неоднозначным.
 - Registry и inferred areas должны быть явно разделены в resolver context.
   `ReadReceipt.areas` содержит только HA registry bindings, не inferred rooms.
-- Не добавлять action execution, HA POST/service calls, vacuum/button/appliance/
-  lock/climate/script plans, recovery, scheduler, reminders, learning,
+- Stage 73 разрешает ровно один bounded write adapter, только для 3–5 явно
+  выбранных владельцем canaries. CONTROL_ENABLED и CANARY_LIVE_ENABLED по
+  умолчанию false; Phase A не имеет разрешения на реальные HA POST/service calls.
+- Не добавлять vacuum/button/appliance/lock/climate/script plans, recovery, scheduler, reminders, learning,
   onboarding, diagnostics automation или persistent memory.
 - Не добавлять правила конкретных реальных устройств в runtime. Они допустимы
   только в fixtures/tests.
@@ -44,7 +48,13 @@ shadow-планы для безопасных команд. Production стро�
 ## Безопасность
 
 - HA доступен только через GET `/api/` и GET `/api/states`, а inventory читает
-  три registry-list команды WebSocket. Service calls отсутствуют.
+  три registry-list команды WebSocket. До отдельного Phase B approval реальные
+  service calls запрещены. Fake-server POST не является реальным HA POST.
+- Model не является executor; action credential отдельный, вне prompt и Git.
+  Canary plan immutable, с коротким TTL, fingerprint и one-use reservation.
+  Только независимые AFTER + STABILITY reads разрешают verified receipt.
+- Durable idempotency ledger и sticky emergency-OFF — только safety state,
+  не conversational memory. Аварийную блокировку автоматически не снимать.
 - Shadow planning не обращается к HA вообще; model POST разрешён только
   loopback Ollama и не является HA service call.
 - Не выполнять shell, sudo, SSH и сетевые изменения от имени модели.

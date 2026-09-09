@@ -1,0 +1,821 @@
+{
+  "schema_version": 1,
+  "status": "pass",
+  "mode": "shadow",
+  "manifest_count": 42,
+  "manifest_sha256": "4182f1a75a494effc607440810b5c05c218e8b8822df3a4e9e62fd1b58088b2d",
+  "owner_reviewed_passed": 42,
+  "failures": 0,
+  "failed_case_ids": [],
+  "wrong_target": 0,
+  "cross_room_target": 0,
+  "missed_expected_plan": 0,
+  "wrong_action": 0,
+  "ambiguous_plan": 0,
+  "forbidden_plan": 0,
+  "false_action_intent": 0,
+  "model_clarification": 0,
+  "clarification_outcomes": 12,
+  "ha_post": 0,
+  "ha_service_paths": 0,
+  "ha_read_attempts": 0,
+  "service_calls": 0,
+  "model_calls": 0,
+  "model_prompt_technical_ids": 0,
+  "deterministic_resolutions": 30,
+  "model_assisted_resolutions": 0,
+  "network_requests": 0,
+  "latency": {
+    "n": 42,
+    "p50_s": 1.5256,
+    "p95_s": 1.6728,
+    "p99_s": 1.7204,
+    "mean_s": 1.5495
+  },
+  "cases": [
+    {
+      "case_id": "P01",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Свет",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5366,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P02",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Свет",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.5219,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P03",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Свет",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5032,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P04",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кабинет Switch 1",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.4863,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P05",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кабинет Switch 1",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.5003,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P06",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кабинет Switch 1",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.4972,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P07",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кабинет Switch 2",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5271,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P08",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кабинет Switch 2",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.5497,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P09",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кабинет Switch 2",
+      "selected_area": "Кабинет",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.4902,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P10",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кухня Switch 1",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.4767,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P11",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кухня Switch 1",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.5565,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P12",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кухня Switch 1",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.4987,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P13",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кухня кузня",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.49,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P14",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кухня кузня",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.4934,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P15",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кухня кузня",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5098,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P16",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5252,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P17",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.492,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P18",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "Вытяжка на кухне",
+      "selected_area": "Кухня",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.526,
+      "requested_areas": [
+        "Кухня"
+      ],
+      "requested_types": [
+        "fan"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P19",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "гардероб Switch 2",
+      "selected_area": "Гардероб",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5062,
+      "requested_areas": [
+        "Гардероб"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P20",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "гардероб Switch 2",
+      "selected_area": "Гардероб",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.5211,
+      "requested_areas": [
+        "Гардероб"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P21",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "гардероб Switch 2",
+      "selected_area": "Гардероб",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5046,
+      "requested_areas": [
+        "Гардероб"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P22",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "гардероб Выключатель 2",
+      "selected_area": "Гардероб",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.4965,
+      "requested_areas": [
+        "Гардероб"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P23",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "гардероб Выключатель 2",
+      "selected_area": "Гардероб",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.4948,
+      "requested_areas": [
+        "Гардероб"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P24",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "гардероб Выключатель 2",
+      "selected_area": "Гардероб",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5373,
+      "requested_areas": [
+        "Гардероб"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P25",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "коридор",
+      "selected_area": "Коридор",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5767,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P26",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "коридор",
+      "selected_area": "Коридор",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.494,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P27",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "коридор",
+      "selected_area": "Коридор",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5366,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P28",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кавидор коридор",
+      "selected_area": "Коридор",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5556,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P29",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кавидор коридор",
+      "selected_area": "Коридор",
+      "selected_domain": "switch",
+      "selected_action": "turn_off",
+      "latency_s": 1.5117,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "P30",
+      "category": "room_type_plan",
+      "expected_outcome": "plan",
+      "actual_outcome": "plan",
+      "selected_human_target": "кавидор коридор",
+      "selected_area": "Коридор",
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "latency_s": 1.5154,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A01",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.553,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A02",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.562,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A03",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.5621,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A04",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.7072,
+      "requested_areas": [
+        "Ванная"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A05",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.6733,
+      "requested_areas": [
+        "Ванная"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A06",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.6621,
+      "requested_areas": [
+        "Ванная"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A07",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.6175,
+      "requested_areas": [
+        "Ванная"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A08",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.646,
+      "requested_areas": [
+        "Ванная"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A09",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.6131,
+      "requested_areas": [
+        "Ванная"
+      ],
+      "requested_types": [
+        "switch"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A10",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.7295,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A11",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.6626,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    },
+    {
+      "case_id": "A12",
+      "category": "capability_ambiguity",
+      "expected_outcome": "clarification",
+      "actual_outcome": "clarification",
+      "selected_human_target": null,
+      "selected_area": null,
+      "selected_domain": null,
+      "selected_action": null,
+      "latency_s": 1.6593,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "pass": true,
+      "error": null
+    }
+  ],
+  "REAL_TARGETS_TESTED": 10,
+  "REAL_ROOM_TYPE_PLANS": 21,
+  "REAL_CLARIFICATIONS": 12,
+  "REAL_NO_PLANS": 0
+}

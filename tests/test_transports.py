@@ -11,6 +11,15 @@ import local_chat_gateway as local
 
 
 class TransportTests(unittest.TestCase):
+    def test_action_result_channels_are_session_local(self) -> None:
+        app = local.ChatApplication()
+        first = app.session("a" * 43).context["action_results"]
+        second = app.session("b" * 43).context["action_results"]
+        self.assertIsNot(first, second)
+        store = alice.SessionStore()
+        self.assertIsNot(store.get("first-session", True).action_results,
+                         store.get("second-session", True).action_results)
+
     def test_local_chat_calls_injected_single_answerer(self) -> None:
         calls = []
         app = local.ChatApplication(

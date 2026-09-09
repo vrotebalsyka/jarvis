@@ -1,0 +1,60 @@
+{
+  "scope": "owner_authorized_owner_answer_unicode_hotfix_only",
+  "date": "2026-09-09",
+  "evidence_note": "Observed test, runtime and browser results; not a Stage73 live acceptance gate.",
+  "base_commit": "8bc3b480a9fa2414dfe8680233db5b23ee0b54fe",
+  "new_commit": null,
+  "production_changed_files_this_hotfix": ["scripts/bounded_ha_agent.py"],
+  "changed_function": "validate_owner_answer",
+  "other_bytes_in_file_unchanged": true,
+  "runtime_files_compared": 15,
+  "other_runtime_files_changed": [],
+  "before_sha256": "e02ce77e20883bc9fcdffa3de86200a03aedf6cf7c91b5d8240aa8e53f553bff",
+  "after_sha256": "58126c55deb6b035480e298bf5fc35cfe8dd5b3bfce08668a9e69f96365f5084",
+  "production_lines_before": 1137,
+  "production_lines_after": 1143,
+  "runtime_description": "Stage72 base plus separately authorized uncommitted CSRF and Unicode hotfixes; not exact GitHub main.",
+  "backup": "unicode-hotfix-20260909/bounded_ha_agent.before.py in the parent workspace",
+  "services_restarted": ["home-butler-local-chat.service"],
+  "local_chat_active_after": true,
+  "alice_pid_and_active_timestamp_unchanged": true,
+  "alice_loaded_code_updated": false,
+  "canary_modules_installed": false,
+  "ha_configuration_changed": false,
+  "model_changed": false,
+  "ha_control_commands_sent": false,
+  "phase_b_started": false,
+  "security": {
+    "original_secret_and_technical_id_patterns_unchanged": true,
+    "checks_original_and_additional_unicode_screened_view": true,
+    "safe_unicode_returned_without_loss": true,
+    "values_and_units_preserved": true,
+    "invalid_surrogates_and_controls_rejected": true,
+    "answer_size_limit_preserved": true
+  },
+  "tests": {
+    "new_tests_before_fix": {"tests_run": 7, "failures_including_subtests": 25, "errors_including_subtests": 9},
+    "new_tests_after_fix": {"tests_run": 7, "failures": 0, "errors": 0, "seconds": 0.019},
+    "repository_after_fix": {"tests_run": 145, "failures": 0, "errors": 0, "seconds": 55.977},
+    "staged_stage72_compatibility": {"tests_run": 14, "failures": 0, "errors": 0, "seconds": 0.061},
+    "synthetic_sensitive_text_variants_checked": 42,
+    "additional_supplementary_compatibility_identifier_checked": true,
+    "safe_unicode_examples_checked": 7
+  },
+  "browser": {
+    "tool": "agent-browser",
+    "real_production_conversational_path": true,
+    "responses_stubbed": false,
+    "observations": [
+      {"utterance": "привет", "http_status": 200, "latency_ms": 1481, "csrf_matches": true, "answer_nonempty": true, "supplementary_unicode": false, "outcome": "conversation"},
+      {"utterance": "Поздоровайся и добавь эмодзи машущей руки.", "http_status": 200, "latency_ms": 1369, "csrf_matches": true, "answer_nonempty": true, "supplementary_unicode": false, "outcome": "clarification", "semantic_pass": false},
+      {"utterance": "спасибо", "http_status": 200, "latency_ms": 2182, "csrf_matches": true, "answer_nonempty": true, "supplementary_unicode": true, "outcome": "conversation", "answer": "Спасибо за доверие! 🤗 Чем еще могу быть полезен?"}
+    ]
+  },
+  "status": "UNICODE_HOTFIX_DEPLOYED_LOCAL_CHAT_VERIFIED",
+  "remaining_limitations": [
+    "One free-form request to add emoji was clarified as an unresolved home target; the parser was not changed.",
+    "Alice was not restarted or live-tested for this hotfix; its already loaded code remains unchanged.",
+    "Home Assistant connectivity and Stage73 live gates were not revalidated; no real control was authorized."
+  ]
+}

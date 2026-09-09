@@ -8,9 +8,10 @@ import json
 import math
 import re
 import sys
+import threading
 import time
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Sequence
 
@@ -23,6 +24,7 @@ import home_assistant_mcp as resolver  # noqa: E402
 import home_assistant_read  # noqa: E402
 import model_runtime_policy  # noqa: E402
 import shadow_action_policy as action_policy  # noqa: E402
+import canary_contract  # noqa: E402
 from ollama_endpoint import OllamaEndpoint, load_runtime_ollama_endpoint  # noqa: E402
 
 
@@ -43,7 +45,7 @@ SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 CONTROL_WORD_RE = re.compile(
-    r"\b(?:включи|включите|включай|включить|включать|выключи|выключите|выключай|выключить|выключать|"
+    r"\b(?:включи|включите|включай|включить|включать|включим|выключи|выключите|выключай|выключить|выключать|выключим|"
     r"зажги|зажгите|зажечь|погаси|погасите|погасить|вруби|отключи|отключите|отключить|активируй|активировать|"
     r"деактивируй|деактивировать|переключи|переключить|нажми|нажать|запусти|запустить|останови|"
     r"остановить|верни|установи|установить|заблокируй|заблокировать|разблокируй|разблокировать|"
@@ -53,11 +55,11 @@ CONTROL_WORD_RE = re.compile(
     re.IGNORECASE,
 )
 TURN_ON_RE = re.compile(
-    r"\b(?:включи|включите|включай|включить|включать|зажги|зажгите|зажечь|вруби|активируй|активировать|turn\s+on)\b",
+    r"\b(?:включи|включите|включай|включить|включать|включим|зажги|зажгите|зажечь|вруби|активируй|активировать|turn\s+on)\b",
     re.IGNORECASE,
 )
 TURN_OFF_RE = re.compile(
-    r"\b(?:выключи|выключите|выключай|выключить|выключать|погаси|погасите|погасить|"
+    r"\b(?:выключи|выключите|выключай|выключить|выключать|выключим|погаси|погасите|погасить|"
     r"отключи|отключите|отключить|деактивируй|деактивировать|turn\s+off)\b",
     re.IGNORECASE,
 )
@@ -69,23 +71,28 @@ UNSUPPORTED_ACTION_RE = re.compile(
     re.IGNORECASE,
 )
 NEGATED_ACTION_RE = re.compile(
-    r"\b(?:не\s+(?:надо\s+|нужно\s+|стоит\s+)?|не\s+хочу\s+)(?:включать|выключать|включай|"
-    r"выключай|включи|выключи|зажигать|зажигай|гасить|гаси)\b",
+    r"\b(?:не\s+(?:надо\s+|нужно\s+|стоит\s+|будем\s+)?|не\s+хочу\s+)(?:включать|выключать|включай|"
+    r"выключай|включи|выключи|включим|выключим|зажигать|зажигай|гасить|гаси)\b",
     re.IGNORECASE,
 )
 ACTION_FALLBACK_CUE_RE = re.compile(
     r"\b(?:сделай|сделайте|пусть|хочу|хотелось|нужно|надо|можешь|можете|прошу|"
-    r"темно|светло|светил|светилась|горел|горела|убери|уберите|оставь|оставьте)\b",
+    r"давай|давайте|темно|светло|светил|светилась|горел|горела|убери|уберите|оставь|оставьте)\b",
     re.IGNORECASE,
 )
+ACTION_DISCUSSION_RE = re.compile(
+    r"^\s*(?:(?:а|и|ну|пожалуйста)\s+)*(?:как\b|каким\s+образом\b|"
+    r"(?:объясни|расскажи|покажи)\s*[,;:]?\s*(?:мне\s+)?(?:как\b|способ\b|инструкц)|"
+    r"(?:(?:ты|вы)\s+)?уме(?:ешь|ете)\b)", re.IGNORECASE,
+)
 NATURAL_OFF_RE = re.compile(
-    r"\b(?:не\s+(?:горит|горел[аои]?|светит|светил[аои]?|светится|светил(?:ось|ась))|"
+    r"\b(?:не\s+(?:горит|горел[аои]?|светит|светил[аои]?|светится|светил(?:ся|ось|ась|ись))|"
     r"без\s+света|темно(?:ты|й|ю)?|убери(?:те)?\s+свет)\b",
     re.IGNORECASE,
 )
 NATURAL_ON_RE = re.compile(
     r"\b(?:светло|светл(?:ым|ой|ую)|горит|горел[аои]?|светит|светил[аои]?|"
-    r"светится|светил(?:ось|ась)|светящ(?:имся|ейся)|работает)\b",
+    r"светится|светил(?:ся|ось|ась|ись)|светящ(?:имся|ейся)|работает)\b",
     re.IGNORECASE,
 )
 NATURAL_LIGHT_STATE_RE = re.compile(
@@ -188,6 +195,8 @@ class TurnResult:
     model_generated_entity_ids: int = 0
     action_plan: action_policy.ActionPlan | None = None
     trace_json: str | None = None
+    canary_plan: canary_contract.SealedActionPlan | None = None
+    action_receipt: Any | None = None
 
 
 def _reject_constant(_value: str) -> None:
@@ -257,10 +266,16 @@ def validate_owner_answer(answer: str) -> str:
     normalized = " ".join(answer.strip().split())
     if not normalized or len(normalized) > MAX_OWNER_ANSWER_CHARS:
         raise BoundedAgentError("owner answer size is invalid")
-    if TECHNICAL_ID_RE.search(normalized) or SECRET_RE.search(normalized):
+    if any(unicodedata.category(character) in {"Cc", "Cs"} for character in normalized):
+        raise BoundedAgentError("owner answer contains invalid control characters")
+    # Screen both the original and a folded view; emoji/formatting must not
+    # split an identifier or secret. Return the original text, not this view.
+    screened = "".join(
+        character for character in unicodedata.normalize("NFKC", normalized)
+        if ord(character) <= 0xFFFF and unicodedata.category(character) not in {"Cf", "Mn", "Me"}
+    )
+    if any(TECHNICAL_ID_RE.search(text) or SECRET_RE.search(text) for text in (normalized, screened)):
         raise BoundedAgentError("owner answer exposed technical data")
-    if any(ord(character) > 0xFFFF for character in normalized):
-        raise BoundedAgentError("owner answer contains unsupported pictographs")
     return normalized
 
 
@@ -367,11 +382,16 @@ def _general_answer(
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str)
     )
     messages.append({"role": "user", "content": question})
-    return validate_owner_answer(_model_content(ollama_call(
+    answer = validate_owner_answer(_model_content(ollama_call(
         endpoint_loader(), "/api/chat",
         model_runtime_policy.build_chat_payload(runtime_profile, messages),
         timeout=profile.request_timeout_seconds,
     )))
+    if re.search(r"\b(?:включил[аи]?|выключил[аи]?|готово|сделано|выполнил[аи]?)\b", answer, re.IGNORECASE):
+        # General conversation has no ActionReceipt. An LLM completion claim
+        # cannot impersonate the verified-action branch of the host renderer.
+        return "У меня нет подтверждённого результата управления."
+    return answer
 
 
 def _extract_features(utterance: str) -> tuple[tuple[str, ...], bool]:
@@ -436,6 +456,8 @@ def _build_intent_frame(
 ) -> IntentFrame:
     focus.expire(now)
     control = bool(CONTROL_WORD_RE.search(question))
+    if control and ACTION_DISCUSSION_RE.search(question):
+        return IntentFrame("conversation")
     causal = bool(CAUSAL_RE.search(question))
     features, explicit_feature = _extract_features(question)
     if not explicit_feature and focus.pending_target_refs and focus.pending_feature:
@@ -720,6 +742,10 @@ def parse_action_intent(
 ) -> IntentFrame | None:
     """Create the one closed action IntentFrame, with a bounded model fallback."""
 
+    # Asking how/why an action works is not authorization to perform it.
+    # Polite imperative questions ("можешь включить ...?") remain commands.
+    if ACTION_DISCUSSION_RE.search(question) or CAUSAL_RE.search(question):
+        return None
     deterministic = _parse_shadow_action(question)
     if deterministic is not None:
         action, value = deterministic
@@ -894,10 +920,10 @@ def _shadow_action_result(
                 candidate.get("parent_target_ref")
                 for candidate in action_resolution.candidates
             }
+            target_policy = action_policy.ACTION_POLICY_REGISTRY.evaluate(frame.action, target_candidate)
             target_hard_deny = (
-                action_policy.ACTION_POLICY_REGISTRY.evaluate(
-                    frame.action, target_candidate,
-                ).decision == "hard_deny"
+                target_policy.decision == "hard_deny"
+                and target_policy.reason != "unsupported_or_ambiguous_domain"
                 and (
                     target_resolution.tier in {"exact_alias", "exact_name", "entity_name_alias"}
                     or not action_resolution.candidates
@@ -920,6 +946,15 @@ def _shadow_action_result(
             and raw_resolution.candidates
         ):
             resolution = raw_resolution
+        elif (not frame.selector_used and raw_resolution.weak
+              and target_resolution.weak and len(target_resolution.candidates) == 1
+              and resolver.weak_action_evidence_matches(inventory, target_resolution.candidates[0], question,
+                                                        require_full_name=True)):
+            # A whole physical name can survive inflection while child entities
+            # share a generic original_name. Preserve verified parent evidence;
+            # the multi-output check below still forbids choosing its channel.
+            resolution = target_resolution
+            weak_owner_verified = True
         elif raw_resolution.tier in STRONG_ACTION_TIERS and len(raw_resolution.candidates) == 1:
             resolution = raw_resolution
         elif (
@@ -937,6 +972,20 @@ def _shadow_action_result(
             resolution = action_resolution if action_resolution.candidates else resolver.resolve_targets(
                 inventory, scope_query or question, "power",
             )
+    if len(resolution.candidates) == 1:
+        physical = resolution.candidates[0]
+        physical_policy = action_policy.ACTION_POLICY_REGISTRY.evaluate(frame.action, physical)
+        if not physical.get("entity_ref") and (
+            physical_policy.decision == "allow_shadow"
+            or physical_policy.reason == "unsupported_or_ambiguous_domain"
+        ):
+            # An exact parent name is not permission to choose one of its channels.
+            # Keep the same HomeGraph entity projection and request clarification.
+            outputs = tuple(profile for profile in prepared_action_profiles
+                            if profile.get("parent_target_ref") == physical.get("target_ref"))
+            if len(outputs) > 1:
+                resolution = resolver.Resolution("physical_output_ambiguity",
+                    tuple(str(profile["target_ref"]) for profile in outputs), outputs)
     candidates = resolution.candidates
     evidence = _resolution_evidence(
         resolution, scope, weak_owner_verified=weak_owner_verified,
@@ -1060,6 +1109,62 @@ def _shadow_action_result(
     return TurnResult(result_frame, (), answer, action_plan=plan, trace_json=trace)
 
 
+def render_action_receipt(receipt: Any, target_label: str) -> str:
+    """Extend the existing host renderer; never promote transport acceptance."""
+    if receipt.replayed:
+        return "Этот запрос уже обработан; повторную команду не отправляю."
+    if receipt.status == "verified" and receipt.verification_evidence and receipt.verified_at is not None:
+        if receipt.no_op:
+            return "Уже в нужном состоянии; подтверждено двумя свежими чтениями."
+        verb = "Включил" if receipt.action == "turn_on" else "Выключил"
+        return f"{verb}: {target_label}. Результат подтверждён чтением Home Assistant."
+    return {
+        "accepted_unverified": "Команда отправлена, но результат пока не подтверждён.",
+        "delivery_unknown": "Не могу подтвердить, дошла ли команда. Автоматически не повторяю.",
+        "failed": "Команда не выполнилась.",
+        "rejected": "Не выполняю эту команду.",
+        "not_sent": "Управление отключено. Ничего не отправлено в Home Assistant.",
+    }.get(receipt.status, "Не выполняю эту команду.")
+
+
+class ActionResultEvents:
+    """Ephemeral session delivery of GET-only verification continuations.
+
+    Not conversational memory or a scheduler. A transport polls only its own
+    pending results. Restart loses notifications, never the durable POST ledger.
+    """
+    def __init__(self) -> None:
+        self._pending: dict[str, tuple[Any, Any, str, str]] = {}
+        self._lock = threading.Lock()
+
+    def add(self, plan: Any, adapter: Any, receipt: Any, label: str) -> None:
+        if receipt.status not in {"accepted_unverified", "delivery_unknown"} or receipt.replayed:
+            return
+        with self._lock:
+            if len(self._pending) < 5:
+                self._pending.setdefault(plan.plan_id, (plan, adapter, label, receipt.status))
+
+    def poll(self) -> list[dict[str, str]]:
+        events = []
+        with self._lock:
+            for key, (plan, adapter, label, initial_status) in list(self._pending.items()):
+                if time.time() > plan.created_at + 30:
+                    events.append({"type": "action_result", "status": initial_status,
+                                   "answer": "Результат не подтверждён за время проверки. Автоматически не повторяю."})
+                    del self._pending[key]
+                    continue
+                try:
+                    receipt = adapter.verify_pending(plan)
+                except (canary_contract.CanaryError, OSError, ValueError):
+                    continue
+                if receipt.status in {"accepted_unverified", "delivery_unknown"} and not receipt.reason:
+                    continue
+                events.append({"type": "action_result", "status": receipt.status,
+                               "answer": validate_owner_answer(render_action_receipt(receipt, label))})
+                del self._pending[key]
+        return events
+
+
 def process_turn(
     question: str,
     context: Mapping[str, Any],
@@ -1073,6 +1178,8 @@ def process_turn(
     ollama_call: Callable[..., dict[str, Any]] = call_ollama,
     clock: Callable[[], float] = time.monotonic,
     trace_sink: Callable[[str], None] | None = _write_shadow_trace,
+    canary_adapter: Any | None = None,
+    control_config_loader: Callable[[], canary_contract.ControlConfig] = canary_contract.load_config,
 ) -> TurnResult:
     del voice
     inventory = inventory_loader()
@@ -1088,19 +1195,69 @@ def process_turn(
         ollama_call=ollama_call,
     )
     if action_frame is not None:
-        return _shadow_action_result(
+        result = _shadow_action_result(
             question, inventory, action_frame, focus, now,
             trace_sink=trace_sink,
         )
+        if result.action_plan is None:
+            return result
+        try:
+            config = control_config_loader()
+        except (canary_contract.CanaryError, OSError):
+            return replace(result, answer="Не выполняю эту команду: canary-разрешение не подтверждено.")
+        if not config.records:
+            return result
+        from canary_write_adapter import ActionReceipt, CanaryWriteAdapter
+        try:
+            matches, _reason = resolver.action_scope_matches(
+                inventory, {"target_ref": result.action_plan.target_ref},
+                _scope_mapping(result.action_plan.scope),
+            )
+            if not matches:
+                raise canary_contract.CanaryError("canary_scope_mismatch")
+            plan = canary_contract.seal_plan(
+                result.action_plan, question, str(context.get("control_request_key") or ""),
+                config, inventory,
+            )
+            if canary_adapter is None:
+                adapter = None
+                if not config.enabled:
+                    receipt = ActionReceipt(plan.plan_id, "not_sent", plan.resolved_target_ref, plan.action)
+                else:
+                    from canary_verifier import CanaryVerifier
+                    adapter = CanaryWriteAdapter(CanaryVerifier(home_assistant_read.load_config()))
+                    receipt = adapter.execute(plan)
+            else:
+                adapter = canary_adapter
+                receipt = adapter.execute(plan)
+        except canary_contract.CanaryError:
+            return replace(result, answer="Не выполняю эту команду: canary-разрешение не подтверждено.")
+        trace = json.loads(result.trace_json or "{}")
+        trace.update({"mode": "canary", "service_calls": receipt.service_calls,
+                      "ha_post": receipt.service_calls, "receipt_status": receipt.status,
+                      "verification_evidence": receipt.verification_evidence,
+                      "replayed": receipt.replayed, "no_op": receipt.no_op})
+        trace_json = json.dumps(trace, ensure_ascii=False, separators=(",", ":"))
+        if trace_sink is not None:
+            trace_sink(trace_json)
+        events = context.get("action_results")
+        if isinstance(events, ActionResultEvents) and adapter is not None:
+            events.add(plan, adapter, receipt, result.action_plan.target_label)
+        return replace(result, canary_plan=plan, action_receipt=receipt, trace_json=trace_json,
+                       answer=validate_owner_answer(render_action_receipt(receipt, result.action_plan.target_label)))
     frame = _build_intent_frame(
         question, inventory, focus, now,
         endpoint_loader=endpoint_loader, ollama_call=ollama_call,
     )
     if frame.kind == "conversation":
-        answer = _general_answer(
-            question, history, runtime_profile=runtime_profile,
-            endpoint_loader=endpoint_loader, ollama_call=ollama_call,
-        )
+        if ACTION_DISCUSSION_RE.search(question) and CONTROL_WORD_RE.search(question):
+            answer = ("Это вопрос об управлении, а не команда. Ничего не выполняю. "
+                      "Для действия нужна отдельная прямая команда и разрешённая однозначная цель.")
+        else:
+            answer = _general_answer(
+                question, history, runtime_profile=runtime_profile,
+                endpoint_loader=endpoint_loader, ollama_call=ollama_call,
+            )
         return TurnResult(frame, (), answer)
     if frame.kind == "clarification":
         feature = _extract_features(question)[0][0]

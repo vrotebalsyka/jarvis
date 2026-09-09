@@ -24,6 +24,9 @@ readonly -a RUNTIME_SCRIPTS=(
   alice_skill_health.py
   alice_tailscale_funnel.py
   bounded_ha_agent.py
+  canary_contract.py
+  canary_verifier.py
+  canary_write_adapter.py
   home_assistant_inventory.py
   home_assistant_mcp.py
   home_assistant_read.py

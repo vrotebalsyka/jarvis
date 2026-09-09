@@ -1,13 +1,19 @@
 # Jarvis / Home Butler
 
 Локальный русскоязычный помощник для достоверного чтения Home Assistant и
-Stage 72 shadow action planning. Реальное управление, Hermes gateway, optional
-MCP transport, learning, recovery, scheduler, reminders и persistent dialog
-memory отсутствуют.
+Stage 72 shadow action planning. Production остаётся read-only; Stage 73 Phase A
+разрабатывается в отдельной ветке с обоими control flags OFF. Hermes gateway,
+optional MCP transport, learning, recovery, scheduler и persistent dialog memory
+не возвращаются.
 
 Stage 72 активирован в production в SHADOW mode 2026-09-05 из
 `7eb0a9fd8b03cf481e58aff06b78830b6658a868` (safety tag
-`stage72-complete-7eb0a9f`). Stage 73 не начат. Текущее состояние приёмки
+`stage72-complete-7eb0a9f`), затем обновлён cleanup commit
+`8bc3b480a9fa2414dfe8680233db5b23ee0b54fe`. Stage 73 Phase A не deployed.
+9 сентября отдельно установлены только CSRF/Unicode hotfix локального чата;
+runtime не идентичен main. Свежий отчёт о выполненной работе, скриншотах и
+незакрытых gates: [WORK-REPORT-2026-09-09](reports/WORK-REPORT-2026-09-09.md).
+Текущее состояние приёмки
 после promotion и cleanup указано в `CURRENT-GOAL.md`.
 Read cleanup разделяет registry и inferred rooms; `ReadReceipt` содержит только
 registry area. Разбор исходных failures и повторная приёмка также сохранены там.

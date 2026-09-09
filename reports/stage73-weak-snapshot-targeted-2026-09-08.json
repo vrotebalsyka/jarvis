@@ -1,0 +1,531 @@
+{
+  "status": "fail",
+  "scope": "metadata_snapshot_replay_only",
+  "fresh_home_graph": false,
+  "not_phase_a_acceptance": true,
+  "manifest_sha256": "afc06f073903d906c0ff0808a670618bbff997801a344e526b1e7536151a9caf",
+  "raw_commands": 6,
+  "frozen_manifest_count": 205,
+  "partial_replay": true,
+  "models_used": {},
+  "unique_utterances": 6,
+  "selected_targets": 2,
+  "owner_reviewed_commands": 0,
+  "missing_registry_bindings": 2,
+  "passed": 1,
+  "failures": 5,
+  "failed_case_ids": [
+    "S106",
+    "S107",
+    "S108",
+    "S109",
+    "S110"
+  ],
+  "WRONG_TARGET": 0,
+  "CROSS_ROOM_TARGET": 0,
+  "AMBIGUOUS_PLAN": 0,
+  "FALSE_ACTION_INTENT": 0,
+  "FORBIDDEN_PLAN": 0,
+  "MISSED_EXPECTED_PLAN": 5,
+  "WRONG_ACTION": 0,
+  "MODEL_CALLS": 0,
+  "MODEL_PROMPT_TECHNICAL_IDS": 0,
+  "DETERMINISTIC_RESOLUTIONS": 1,
+  "MODEL_ASSISTED_RESOLUTIONS": 0,
+  "CANARY_SEALED_PLANS": 0,
+  "network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "HA_GET": 0,
+    "REGISTRY_READS": 0,
+    "BLOCKED": 0
+  },
+  "latency": {
+    "n": 6,
+    "p50_s": 1.5205,
+    "p95_s": 1.5336,
+    "p99_s": 1.5347
+  },
+  "cases": [
+    {
+      "case_id": "S105",
+      "utterance": "включи свет в кабиенте",
+      "category": "morphology_typo",
+      "expected_outcome": "plan",
+      "expected_human_target": "Свет",
+      "expected_area": "Кабинет",
+      "actual_outcome": "plan",
+      "expected_registry_area": null,
+      "selected_human_target": "Свет",
+      "selected_areas": [
+        "Кабинет"
+      ],
+      "selected_domain": "switch",
+      "selected_action": "turn_on",
+      "requested_name": null,
+      "requested_areas": [
+        "Кабинет"
+      ],
+      "requested_types": [
+        "light"
+      ],
+      "intent": {
+        "kind": "action",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Кабинет"
+          ],
+          "types": [
+            "light"
+          ],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "Свет",
+          "areas": [
+            "Кабинет"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_area_type",
+        "evidence": "strong"
+      },
+      "policy": {
+        "decision": "allow_shadow",
+        "reason": "shadow_only"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5222,
+      "pass": true,
+      "error_type": null,
+      "answer": "Shadow-план построен: включить Свет. Ничего не отправлено в Home Assistant.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 0,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "S106",
+      "utterance": "включи коридора",
+      "category": "morphology_typo",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "кавидор коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5071,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "S107",
+      "utterance": "выключи коридоре",
+      "category": "morphology_typo",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "кавидор коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5297,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "S108",
+      "utterance": "включи кориодр",
+      "category": "morphology_typo",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "кавидор коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5349,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "S109",
+      "utterance": "выключи корридор",
+      "category": "morphology_typo",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_off",
+        "value": false,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "кавидор коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5188,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    },
+    {
+      "case_id": "S110",
+      "utterance": "включи коридр",
+      "category": "morphology_typo",
+      "expected_outcome": "plan",
+      "expected_human_target": "коридор",
+      "expected_area": "Коридор",
+      "actual_outcome": "clarification",
+      "expected_registry_area": null,
+      "selected_human_target": null,
+      "selected_areas": [],
+      "selected_domain": null,
+      "selected_action": null,
+      "requested_name": null,
+      "requested_areas": [
+        "Коридор"
+      ],
+      "requested_types": [],
+      "intent": {
+        "kind": "clarification",
+        "action": "turn_on",
+        "value": true,
+        "scope": {
+          "areas": [
+            "Коридор"
+          ],
+          "types": [],
+          "name": null,
+          "feature": "power"
+        },
+        "parser": "deterministic"
+      },
+      "candidates": [
+        {
+          "ref": "r1",
+          "label": "коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        },
+        {
+          "ref": "r2",
+          "label": "кавидор коридор",
+          "areas": [
+            "Коридор"
+          ],
+          "kind": "physical",
+          "policy": {
+            "decision": "allow_shadow",
+            "reason": "shadow_only"
+          }
+        }
+      ],
+      "target_decision": {
+        "resolution_tier": "exact_name",
+        "evidence": "ambiguous"
+      },
+      "policy": {
+        "decision": "hard_deny",
+        "reason": "equal_candidates"
+      },
+      "service_calls": 0,
+      "latency_s": 1.5092,
+      "pass": false,
+      "error_type": null,
+      "answer": "Найдены равные кандидаты. Уточните цель; shadow-план не создан.",
+      "metrics": {
+        "WRONG_TARGET": 0,
+        "CROSS_ROOM_TARGET": 0,
+        "AMBIGUOUS_PLAN": 0,
+        "FALSE_ACTION_INTENT": 0,
+        "FORBIDDEN_PLAN": 0,
+        "MISSED_EXPECTED_PLAN": 1,
+        "WRONG_ACTION": 0
+      }
+    }
+  ]
+}

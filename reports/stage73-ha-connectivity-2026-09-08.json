@@ -1,0 +1,20 @@
+{
+  "scope": "read_only_connectivity_diagnosis",
+  "date": "2026-09-08",
+  "observations": [
+    {"platform": "WSL", "probe": "TCP configured HA port", "result": "TimeoutError", "seconds": 3.0047},
+    {"platform": "Windows", "probe": "TCP configured HA port", "result": "timeout", "seconds": 3.152},
+    {"platform": "Windows", "probe": "configured HA address ICMP", "result": "Success", "roundtrip_ms": 15},
+    {"platform": "Windows", "probe": "LAN gateway ICMP", "result": "Success", "roundtrip_ms": 0},
+    {"platform": "Windows", "probe": "route", "interface": "Ethernet", "HA_in_same_subnet": true, "prefix_length": 24},
+    {"platform": "WSL", "probe": "route", "interface": "eth0", "gateway_present": true},
+    {"platform": "WSL", "probe": "control TCP retry after successful ICMP", "result": "TimeoutError", "seconds": 3.0067},
+    {"platform": "WSL", "probe": "proxy environment", "proxy_variable_names": []},
+    {"platform": "WSL", "probe": "local units", "local_chat": "active", "alice_skill": "active", "tailscaled": "active"}
+  ],
+  "localization": "TCP connection establishment to the configured HA listener fails before HTTP authentication or registry commands; host address and LAN gateway respond to ICMP.",
+  "not_proven": ["HA Core listener state", "filter/firewall location", "whether the responding address still belongs to the expected HA host"],
+  "root_cause": "Not distinguishable from this host without HA console/listener logs or an independent LAN client test.",
+  "changes": {"HA_registry": false, "services_restarted": false, "network_settings": false, "control_enabled": false},
+  "note": "Observation values transcribed from actual probe output; this is not an application acceptance gate. No HA POST or service request was sent."
+}

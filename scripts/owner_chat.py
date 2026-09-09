@@ -36,6 +36,7 @@ def startup_context() -> dict[str, Any]:
     return {
         "mode": "read_only", "home_graph": "home_assistant_inventory",
         "session_focus": bounded_ha_agent.SessionFocus(),
+        "action_results": bounded_ha_agent.ActionResultEvents(),
     }
 
 
@@ -82,6 +83,10 @@ def answer_natural(
         and isinstance(item.get("content"), str)
     ]
     try:
+        # Alice/CLI cannot receive unsolicited chat text: deliver a previously
+        # verified result on the next owner turn. Web also polls the same queue.
+        channel = context.get("action_results")
+        events = channel.poll() if isinstance(channel, bounded_ha_agent.ActionResultEvents) else []
         result = responder(
             normalized,
             dict(context),
@@ -93,7 +98,7 @@ def answer_natural(
         raise OwnerChatError("read-only conversational core is unavailable") from error
     if not isinstance(result, str) or not result.strip():
         raise OwnerChatError("read-only conversational core returned no answer")
-    return result.strip()
+    return "\n".join([*(event["answer"] for event in events), result.strip()])
 
 
 def answer(

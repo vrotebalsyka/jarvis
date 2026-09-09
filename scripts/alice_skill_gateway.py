@@ -294,6 +294,7 @@ class SessionRecord:
     touched_at: float
     history: list[dict[str, str]] = field(default_factory=list)
     focus: bounded_ha_agent.SessionFocus = field(default_factory=bounded_ha_agent.SessionFocus)
+    action_results: bounded_ha_agent.ActionResultEvents = field(default_factory=bounded_ha_agent.ActionResultEvents)
     last_message_id: int = -1
     last_response: dict[str, Any] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -535,6 +536,8 @@ class SkillApplication:
             else:
                 turn_context = dict(self.context)
                 turn_context["session_focus"] = record.focus
+                turn_context["action_results"] = record.action_results
+                turn_context["control_request_key"] = f"alice:{turn.session_id}:{turn.message_id}"
                 answer = self.answerer(turn.utterance, turn_context, list(record.history))
                 speech = compact_model_speech(answer)
                 response, route = skill_response(speech), "read_only_conversation"

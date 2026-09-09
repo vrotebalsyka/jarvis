@@ -1,4 +1,5 @@
 config/home-assistant.env
+config/canary.json
 logs/*
 secrets/*
 state/*

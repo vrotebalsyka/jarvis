@@ -1,0 +1,58 @@
+{
+  "scope": "owner_authorized_local_chat_csrf_hotfix_only",
+  "date": "2026-09-09",
+  "evidence_note": "Observations transcribed from executed tests, browser probes and deployment checks; not a Stage73 acceptance gate.",
+  "base_commit": "8bc3b480a9fa2414dfe8680233db5b23ee0b54fe",
+  "new_commit": null,
+  "production_changed_files": ["scripts/local_chat_gateway.py"],
+  "production_change": "Two querySelector('meta') expressions now select meta[name=home-butler-csrf].",
+  "runtime_files_compared": 15,
+  "other_runtime_files_changed": [],
+  "runtime_file_sha256_before": "66f2382f98250e78663cb28c5cf1ca36f5e99f1dfe3db9167fcd116df0604249",
+  "runtime_file_sha256_after": "c0f4b80dd4e81c8a299294aa1c78593292dd0c3d67f7f003404a1af325f9018e",
+  "runtime_lines_before": 281,
+  "runtime_lines_after": 281,
+  "runtime_matches_main_exactly": false,
+  "runtime_description": "Stage72 base plus uncommitted CSRF-only hotfix; working-tree Stage73 changes were not deployed.",
+  "backup": "csrf-hotfix-20260909/local_chat_gateway.before.py in the parent workspace",
+  "services_restarted": ["home-butler-local-chat.service"],
+  "local_chat_active_after": true,
+  "alice_pid_and_active_timestamp_unchanged": true,
+  "canary_modules_installed": false,
+  "ha_or_network_configuration_changed": false,
+  "ha_control_commands_sent": false,
+  "phase_b_started": false,
+  "tests": {
+    "before_fix": {"tests_run": 4, "failures_including_subtests": 4},
+    "repository_after_fix": {"tests_run": 138, "failures": 0, "errors": 0, "seconds": 55.342},
+    "staged_stage72_runtime_after_fix": {"tests_run": 4, "failures": 0, "errors": 0, "seconds": 0.050},
+    "missing_empty_stale_csrf_rejected": true,
+    "owner_auth_preserved": true
+  },
+  "browser": {
+    "tool": "agent-browser",
+    "before": {"frontend_csrf_matches_named_meta": false, "frontend_csrf_empty": true},
+    "after": {"frontend_csrf_matches_named_meta": true, "frontend_csrf_empty": false},
+    "chat_requests": [
+      {"utterance": "привет", "csrf_matches": true, "http_status": 503},
+      {"utterance": "привет", "csrf_matches": true, "http_status": 503},
+      {"utterance": "/help", "csrf_matches": true, "http_status": 200}
+    ]
+  },
+  "backend_diagnostic": {
+    "service_user_environment_mount_namespace_reproduced": true,
+    "exception_chain": ["OwnerChatError", "BoundedAgentError"],
+    "rejection_location": "bounded_ha_agent.py:263 validate_owner_answer",
+    "rejection_condition": "any character above U+FFFF; unsupported pictographs",
+    "model_requests": 2,
+    "blocked_non_model_requests": 0,
+    "raw_model_answer_logged": false,
+    "answer_validator_modified": false
+  },
+  "status": "CSRF_FIXED_DEPLOYED_BACKEND_503_REMAINS",
+  "remaining_limitations": [
+    "Natural conversation still has a separately reproduced response-validation failure.",
+    "Home Assistant connectivity was not revalidated by this transport hotfix.",
+    "Stage73 remains incomplete; no live approval or real control is implied."
+  ]
+}

@@ -85,6 +85,19 @@ class ActionPolicyRegistry:
                 values.extend(value for value in raw if isinstance(value, str))
         return unicodedata.normalize("NFKC", " ".join(values)).casefold().replace("ё", "е")
 
+    @staticmethod
+    def physical_safety_domains(entities: Sequence[Mapping[str, Any]]) -> frozenset[str]:
+        """A disabled, explicitly classified config child-lock is not a physical lock.
+
+        This classifies parent metadata only. It never authorizes a lock target,
+        excludes no other dangerous domain and does not infer from human names.
+        """
+        return frozenset(entity["domain"] for entity in entities if not (
+            entity.get("domain") == "lock" and entity.get("disabled") is True
+            and entity.get("entity_category") == "config"
+            and entity.get("translation_key") == "child_lock"
+        ))
+
     def evaluate(self, action: str | None, profile: Mapping[str, Any]) -> PolicyDecision:
         if action not in _ALLOWED:
             return PolicyDecision("hard_deny", "unsupported_action")

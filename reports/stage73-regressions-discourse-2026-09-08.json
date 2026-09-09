@@ -1,0 +1,113 @@
+{
+  "status": "fail",
+  "scope": "stage71_72_regressions_only",
+  "phase_a_acceptance_complete": false,
+  "source_digest": "b6c7d7bb4d90716a4d2b978c4fb0e5d45e0406e49a71b2094ca512306d013d0b",
+  "source_unchanged": true,
+  "network": {
+    "HA_POST": 0,
+    "SERVICE_CALLS": 0,
+    "HA_GET": 0,
+    "REGISTRY_READS": 0,
+    "BLOCKED": 0
+  },
+  "suites": {
+    "stage71": {
+      "status": "error",
+      "error_type": "InventoryError",
+      "instrumented_network": {
+        "HA_POST": 0,
+        "SERVICE_CALLS": 0,
+        "HA_GET": 0,
+        "REGISTRY_READS": 0,
+        "BLOCKED": 0
+      }
+    },
+    "stage72_natural": {
+      "schema_version": 1,
+      "status": "pass",
+      "mode": "shadow",
+      "manifest_count": 100,
+      "manifest_sha256": "c7481eab286f10adb4abde4c8ea7577c2053c81dadf60ade03be7ca51896524a",
+      "passed": 100,
+      "failures": 0,
+      "failed_case_ids": [],
+      "wrong_target": 0,
+      "cross_room_target": 0,
+      "ambiguous_plan": 0,
+      "forbidden_plan": 0,
+      "missed_expected_plan": 0,
+      "false_action_intent": 0,
+      "wrong_action": 0,
+      "ha_post": 0,
+      "ha_service_paths": 0,
+      "ha_reads": 0,
+      "service_calls": 0,
+      "model_calls": 6,
+      "deterministic_resolutions": 71,
+      "model_assisted_resolutions": 5,
+      "model_prompt_technical_ids": 0,
+      "network_requests": 12,
+      "latency": {
+        "n": 100,
+        "p50_s": 0.019,
+        "p95_s": 2.0427,
+        "p99_s": 2.3992,
+        "mean_s": 0.163
+      },
+      "instrumented_network": {
+        "HA_POST": 0,
+        "SERVICE_CALLS": 0,
+        "HA_GET": 0,
+        "REGISTRY_READS": 0,
+        "BLOCKED": 0
+      }
+    },
+    "stage72_room_type": {
+      "schema_version": 1,
+      "status": "pass",
+      "mode": "shadow",
+      "manifest_count": 42,
+      "manifest_sha256": "4182f1a75a494effc607440810b5c05c218e8b8822df3a4e9e62fd1b58088b2d",
+      "owner_reviewed_passed": 42,
+      "failures": 0,
+      "failed_case_ids": [],
+      "wrong_target": 0,
+      "cross_room_target": 0,
+      "missed_expected_plan": 0,
+      "wrong_action": 0,
+      "ambiguous_plan": 0,
+      "forbidden_plan": 0,
+      "false_action_intent": 0,
+      "model_clarification": 0,
+      "clarification_outcomes": 12,
+      "ha_post": 0,
+      "ha_service_paths": 0,
+      "ha_read_attempts": 0,
+      "service_calls": 0,
+      "model_calls": 0,
+      "model_prompt_technical_ids": 0,
+      "deterministic_resolutions": 30,
+      "model_assisted_resolutions": 0,
+      "network_requests": 0,
+      "latency": {
+        "n": 42,
+        "p50_s": 1.3556,
+        "p95_s": 1.4653,
+        "p99_s": 1.4947,
+        "mean_s": 1.3712
+      },
+      "REAL_TARGETS_TESTED": 10,
+      "REAL_ROOM_TYPE_PLANS": 21,
+      "REAL_CLARIFICATIONS": 12,
+      "REAL_NO_PLANS": 0,
+      "instrumented_network": {
+        "HA_POST": 0,
+        "SERVICE_CALLS": 0,
+        "HA_GET": 0,
+        "REGISTRY_READS": 0,
+        "BLOCKED": 0
+      }
+    }
+  }
+}

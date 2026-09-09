@@ -54,6 +54,8 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(tracked, {
             "README.md", "AGENTS.md", "SECURITY.md", "SOUL.md", "ARCHITECTURE.md",
             "CURRENT-GOAL.md", "reports/STAGE-69-LIVE-AUDIT-2026-09-01.md",
+            "STAGE-73-RESULT.md",
+            "reports/WORK-REPORT-2026-09-09.md",
             "reports/STAGE-71-SEMANTIC-CONTRACT-2026-09-03.md",
             "reports/STAGE-72-SHADOW-ACTION-PLANNING-2026-09-03.md",
             "reports/STAGE-72-FINAL-REAL-HOME-ACCEPTANCE-2026-09-03.md",

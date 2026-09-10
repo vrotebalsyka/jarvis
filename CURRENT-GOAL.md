@@ -1,5 +1,34 @@
 # Current Goal — Stage 73 Phase A
 
+## Owner pause request — 2026-09-10
+
+Владелец запросил сохранить весь проект на GitHub, затем полностью остановить
+Jarvis/Ollama и запретить автозапуск. Это не Stage73 completion и не Phase B.
+Рабочий снимок: ветка `stage73-canary-live-control`, code `5b35903`, evidence
+`4d6e0e8`. Для продолжения клонировать именно эту ветку, не main:
+
+```bash
+git clone --branch stage73-canary-live-control https://github.com/vrotebalsyka/jarvis.git
+```
+
+В Git сохранены source, tests, frozen manifests, config templates и reports.
+Tokens, private inventory, owner keys и веса Ollama намеренно не публикуются.
+Они остаются на текущем компьютере; для другого компьютера секреты необходимо
+передать отдельно безопасным способом либо перевыпустить. Модель и digest
+зафиксированы в STAGE-73-RESULT.md. Никакие ignored secrets не добавлять в Git.
+
+План остановки: отключить пять Windows задач Home Butler и остановить их;
+остановить/disable/mask 12 точных systemd units Home Butler/Ollama, сохранив
+локальные unit definitions в root-only `/var/lib/home-butler/owner-pause-20260910/units`.
+Не останавливать HA, не переключать устройства и не выключать весь WSL,
+поскольку в нём могут работать другие проекты. Итог остановки будет записан ниже.
+
+Возобновление допускается только по новому решению владельца: сначала review
+CURRENT-GOAL/STAGE-73-RESULT и сохранённых failures, затем восстановить unit
+definitions из локального backup, снять masks и включить только необходимые
+units/tasks. Не запускать installer --activate автоматически и не включать
+CONTROL_ENABLED/CANARY_LIVE_ENABLED. Phase B по-прежнему требует отдельного approval.
+
 Статус Phase A: `FAIL / NOT_READY`.
 Live status: `INCOMPLETE_LIVE_APPROVAL_REQUIRED`. Stage74 не начат.
 Ветка `stage73-canary-live-control`; base и последний проверенный main:

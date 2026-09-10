@@ -1,5 +1,12 @@
 # Jarvis / Home Butler
 
+**2026-09-10: проект остановлен по решению владельца (OWNER_PAUSED).**
+Ollama, Web/Alice и фоновые units остановлены и masked; Windows-задачи автозапуска
+отключены. Для продолжения скачивать ветку `stage73-canary-live-control`.
+Инструкции, ограничения и местоположение локального backup: [CURRENT-GOAL.md](CURRENT-GOAL.md).
+Код, тесты и отчёты опубликованы; секреты и веса модели не входят в Git.
+Не включать сервисы или live control без нового решения владельца.
+
 Локальный русскоязычный помощник для достоверного чтения Home Assistant и
 Stage 72 shadow action planning. Production остаётся read-only; Stage 73 Phase A
 разрабатывается в отдельной ветке с обоими control flags OFF. Hermes gateway,

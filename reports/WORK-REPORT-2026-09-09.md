@@ -1,5 +1,11 @@
 # Jarvis — выполненная работа и проверка скриншотов, 9 сентября 2026
 
+Дополнение 10 сентября: проект и отчёты сохранены в GitHub Stage73 branch,
+после чего по разрешению владельца Ollama/Jarvis остановлены: 12 units masked,
+5 Windows tasks Disabled, Ollama/llama процессов нет. Исходники, веса модели
+и закрытые локальные secrets не удалены; secrets/weights в Git не публикуются.
+Подробности и инструкции продолжения: [CURRENT-GOAL](../CURRENT-GOAL.md).
+
 Последнее дополнение — owner-approved nullable registry contract, code commit
 `5b359032ab80c97b3417a6b01cfca16684ca63bb`. `registry_area=null` теперь хранится
 отдельно от owner room; это не wildcard и не разрешение менять HA registry.

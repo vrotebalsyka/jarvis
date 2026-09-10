@@ -21,7 +21,23 @@ Tokens, private inventory, owner keys и веса Ollama намеренно не
 остановить/disable/mask 12 точных systemd units Home Butler/Ollama, сохранив
 локальные unit definitions в root-only `/var/lib/home-butler/owner-pause-20260910/units`.
 Не останавливать HA, не переключать устройства и не выключать весь WSL,
-поскольку в нём могут работать другие проекты. Итог остановки будет записан ниже.
+поскольку в нём могут работать другие проекты.
+
+**Итог: OWNER_PAUSED, остановка подтверждена 2026-09-10.**
+Все 12 units `masked`, неактивны; все 5 Windows tasks `Disabled` после UAC.
+Ollama/llama processes отсутствуют, MainPID=0 у Ollama/Web/Alice/inventory;
+порты 11434/8780/8765 не слушаются. Дополнительных Python workers Jarvis
+не обнаружено. Windows Ollama processes и matching Run entries не обнаружены.
+12 исходных unit definitions сохранены в указанном root-only backup; definitions
+не удалены. Ошибочный inventory failed-state очищен, service не запускался.
+Код и модельные веса не удалялись, HA не затрагивался, service calls=0.
+WSL и общий Tailscale daemon не выключались, чтобы не затронуть другие проекты;
+отсутствие процессов модели не означает, что сама VM WSL не использует память.
+Runtime chat/Alice теперь намеренно offline, прежние health PASS исторические.
+Операционные scripts сохранены в reports/pause-local-runtime-2026-09-10.sh и
+reports/pause-windows-tasks-2026-09-10.ps1; Linux script одноразовый и повторно
+на masked units не запускается. Никакие скрипты восстановления автоматически
+не выполняются. Stage73 остаётся NOT_READY, а не COMPLETE.
 
 Возобновление допускается только по новому решению владельца: сначала review
 CURRENT-GOAL/STAGE-73-RESULT и сохранённых failures, затем восстановить unit
